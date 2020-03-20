@@ -165,6 +165,7 @@ cputype = np.uint64
 maxcpu = np.iinfo(cputype).max
 
 def bruteforce_contraction(*tensors):
+  # detect open and contracted legs, check input
   c_legs = []
   o_legs = []
   for t in tensors:
@@ -178,6 +179,7 @@ def bruteforce_contraction(*tensors):
   if (np.bincount(c_legs) - 2).any():
     raise Exception('every legs >= 0 must appear exactly twice')
 
+  # define stuff
   n_c = len(c_legs)//2
   c_legs = np.arange(n_c)
   base2 = 2**np.arange(n_c)
@@ -186,11 +188,13 @@ def bruteforce_contraction(*tensors):
      vecs[popcount(i)].append(i)
   TN_L = [TensorNetwork(cpu=maxcpu)]*(2**n_c)
   TN_L[0] = TensorNetwork(*tensors)
+
+  # generate tensor network tree, keepin only best parent
   for n in range(n_c):
     for tn_ID in vecs[n]:
-      mother = TN_L[tn_ID]
-      if mother.cpu < maxcpu:
-        for child in mother.generate_children():
+      parent = TN_L[tn_ID]
+      if parent.cpu < maxcpu:  # some states are not reachable
+        for child in parent.generate_children():
           if child.cpu < TN_L[child.contracted].cpu:
             TN_L[child.contracted] = child
   return TN_L[-1]
