@@ -73,15 +73,15 @@ class TensorNetwork(object):
   each contraction and the memory cost of each past state.
   """
 
-  def __init__(self, *tensors, cpu=[], mem=None, contractions=[]):
+  def __init__(self, *tensors, cpu=0, mem=0, contracted=0):
     self._tensors = list(tensors)
-    self._cpu = cpu.copy()
-    self._contractions = contractions.copy()
+    self._cpu = cpu
+    self._contracted = contracted
     self._ntens = len(tensors)
-    if mem is None:
-      self._mem = [sum(T.size for T in tensors)]
+    if mem == 0:
+      self._mem = sum(T.size for T in tensors)
     else:
-      self._mem = mem.copy()
+      self._mem = mem
 
   @property
   def tensors(self):
@@ -100,12 +100,12 @@ class TensorNetwork(object):
     return self._mem
 
   @property
-  def contractions(self):
-    return self._contractions
+  def contracted(self):
+    return self._contracted
 
   def copy(self):
     return TensorNetwork(*self._tensors, cpu=self._cpu, mem=self._mem,
-                          contractions=self._contractions)
+                          contracted=self._contracted)
 
   def __repr__(self):
     return ','.join([T.name for T in self._tensors])
@@ -132,13 +132,7 @@ class TensorNetwork(object):
     return (mem >= tn_mem and cpu > tn_cpu) or (mem > tn_mem and cpu >= tn_cpu)
 
   def __eq__(self,tn):
-    """
-    Two TN are equal if they consist in exactly the same tensors contracted
-    the same way.
-    """
-    names = sorted(t.name for t in self._tensors)
-    tn_names = sorted(t.name for t in tn._tensors)
-    return names == tn_names
+    return self._contracted == tn.contracted
 
   def contract(self,i,j):
     """
@@ -146,74 +140,80 @@ class TensorNetwork(object):
     """
     legs = find_common_legs(self._tensors[i],self._tensors[j])
     T,cpu = abstract_contraction(self._tensors[i],self._tensors[j],legs)
-    self._cpu.append(cpu)
-    self._mem.append(sum(t.size for t in self._tensors)+T.mem)# store i,j and T
+    self._cpu += cpu
+    self._mem = max(self._mem,(sum(t.size for t in self._tensors)+T.size))# store i,j and T
     del self._tensors[max(i,j)], self._tensors[min(i,j)]
     self._tensors.append(T)
     self._ntens -= 1
-    self._contractions.append(tuple(legs))
+    self._contracted |= sum(2**l for l in legs)
+
+  def generate_children(self):
+    children = []
+    for i in range(self._ntens-1):
+      for j in range(i+1,self._ntens):
+        if have_common_legs(self._tensors[i],self._tensors[j]):
+          child = self.copy()
+          child.contract(i,j)
+          children.append(child)
+    return children
 
 
-# Always contract every compatible legs of two tensors. This is not the same
-# as choosing one leg and contracting it at every step.
-def bruteforce_contraction(*tensors, compare=True):
-  tn = TensorNetwork(*tensors)
-  if len(tensors) < 2:
-    return [tn]
-  queue = [tn]
-  contracted = []
-  while queue:
-    tn = queue.pop(0)
-    for i in range(tn.ntens-1):
-      for j in range(i+1,tn.ntens):
-        if have_common_legs(tn.tensors[i],tn.tensors[j]):
-          new_tn = tn.copy()
-          new_tn.contract(i,j)
-          if new_tn.ntens == 1:
-            contracted.append(new_tn)
-          else:
-            c_legs = set(chain.from_iterable(new_tn.contractions))
-            append = True
-            rm = []
-            for k,tnk in enumerate(queue): # remove dupplicate and worse path
-              if set(chain.from_iterable(tnk.contractions)) == c_legs:
-                if (compare and tnk < new_tn) or tnk == tn:
-                  append = False
-                  break
-                elif compare and new_tn < tnk:
-                  rm.append(k)
-            if append:
-              for k in rm[::-1]:
-                del queue[k]
-              queue.append(new_tn)
+def popcount(n):
+  return bin(n).count('1')
 
-  def keep_it(c,c2):
-    return not ((c==c2 and (not (c is c2)) ) or (compare and c<c2))
+cputype = np.uint64
+maxcpu = np.iinfo(cputype).max
 
-  for c in contracted:  # remove bad ones
-    contracted[:] = [c2 for c2 in contracted if keep_it(c,c2)]
-  return contracted
+def bruteforce_contraction(*tensors):
+  c_legs = []
+  o_legs = []
+  for t in tensors:
+    for l in t.legs:
+      if l < 0:
+        o_legs.append(l)
+      else:
+        c_legs.append(l)
+  if sorted(o_legs) != list(range(min(o_legs),0)):
+    raise Exception('every legs < 0 must appear once and only once')
+  if (np.bincount(c_legs) - 2).any():
+    raise Exception('every legs >= 0 must appear exactly twice')
+
+  n_c = len(c_legs)//2
+  c_legs = np.arange(n_c)
+  base2 = 2**np.arange(n_c)
+  vecs = [[] for i in range(n_c)]
+  for i in range(2**n_c-1):
+     vecs[popcount(i)].append(i)
+  TN_L = [TensorNetwork(cpu=maxcpu)]*(2**n_c)
+  TN_L[0] = TensorNetwork(*tensors)
+  for n in range(n_c):
+    for tn_ID in vecs[n]:
+      mother = TN_L[tn_ID]
+      if mother.cpu < maxcpu:
+        for child in mother.generate_children():
+          if child.cpu < TN_L[child.contracted].cpu:
+            TN_L[child.contracted] = child
+  return TN_L[-1]
+
 
 
 chi = 100
-D = 3
-print('test: symmetric CTMRG contraction scheme, chi={chi}, D={D}')
-print('The results must be [E-[T1-[C-T2]]] and [E-[T2-[C-T1]]]')
-C = AbstractTensor('C',(chi,chi),(2,0))
-T1 = AbstractTensor('T1',(chi,chi,D**2),(0,1,3))
-T2 = AbstractTensor('T2',(chi,chi,D**2),(2,6,4))
-E = AbstractTensor('E',(D**2,D**2,D**2,D**2),(3,4,7,5))
+D = 4
+#
+#  C-0-T- -1
+#  |   |
+#  1   2
+#  |   |
+#  T-3-E- -2
+#  |   |
+#  -3  -4
+C = AbstractTensor('C',(chi,chi),(1,0))
+T1 = AbstractTensor('T1',(chi,chi,D**2),(0,2,-1))
+T2 = AbstractTensor('T2',(chi,chi,D**2),(1,-3,3))
+E = AbstractTensor('E',(D**2,D**2,D**2,D**2),(2,3,-4,-2))
+print(f'test: symmetric CTMRG contraction scheme, chi={chi}, D={D}')
+print('The result must be [E-[T1-[C-T2]]] or [E-[T2-[C-T1]]]')
 
 res = bruteforce_contraction(C,T1,T2,E)
 print('optimal schemes =', res)
-print(res[0], ': cpu = ', sum(res[0].cpu), ', mem = ', max(res[0].mem), sep='')
-
-print('\ntest with formal variables')
-import sympy as sp
-chif,Df = sp.symbols('chi,D')
-Cf = AbstractTensor('C',(chif,chif),(2,0))
-T1f = AbstractTensor('T1',(chif,chif,Df**2),(0,1,3))
-T2f = AbstractTensor('T2',(chif,chif,Df**2),(2,6,4))
-Ef = AbstractTensor('E',(Df**2,Df**2,Df**2,Df**2),(3,4,7,5))
-resf =  bruteforce_contraction(Cf,T1f,T2f,Ef,compare=False) # cannot compare formal
-print(resf[1], ': cpu = ', sum(resf[1].cpu), '\nmem = max(', resf[1].mem, ')', sep='')
+print(res, ': cpu = ', res.cpu, ', mem = ', res.mem, sep='')
