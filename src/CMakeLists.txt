@@ -27,8 +27,8 @@ endif()
 
 # Compile library
 set (LIBSRC abstract_tensor.cpp)
-#add_library(PEPS_lib ${LIBSRC})
-link_libraries(PEPS_lib)
+add_library(TENS_lib ${LIBSRC})
+link_libraries(TENS_lib)
 
 # Linking and include info
 #link_libraries(-llapack)
