@@ -5,7 +5,7 @@
 #include <tuple>
 #include "abstract_tensor.hpp"
 
-AbstractTensor::AbstractTensor(std::string const &name, std::vector<unsigned> const &shape, std::vector<int> const &legs): _name(name), _shape(shape), _legs(legs), _ndim(legs.size()), _size(1)
+AbstractTensor::AbstractTensor(std::string const &name, std::vector<unsigned> const &shape, std::vector<short> const &legs): _name(name), _shape(shape), _legs(legs), _ndim(legs.size()), _size(1)
 {
   // should throw exception if legs and shape have different size
   for (auto i:shape) { _size *= i; }
@@ -15,9 +15,9 @@ AbstractTensor::AbstractTensor(std::string const &name, std::vector<unsigned> co
 AbstractTensor::~AbstractTensor()
 {}
 
-std::vector<int> AbstractTensor::find_common_legs(AbstractTensor const &t) const
+std::vector<short> AbstractTensor::find_common_legs(AbstractTensor const &t) const
 {
-  std::vector<int> legs;
+  std::vector<short> legs;
   for (auto l1: _legs) {
     for (auto l2: t._legs) {
       if (l1==l2) {
@@ -41,16 +41,16 @@ std::ostream & operator << (std::ostream &out, const AbstractTensor &t)
     return out;
 }
 
-std::tuple<AbstractTensor,unsigned long> AbstractTensor::dot(AbstractTensor const &t, std::vector<int> const &contracted_legs_=std::vector<int>()) const
+std::tuple<AbstractTensor,unsigned long> AbstractTensor::dot(AbstractTensor const &t, std::vector<short> const &contracted_legs_=std::vector<short>()) const
 {
-  std::vector<int> contracted_legs = contracted_legs_;
+  std::vector<short> contracted_legs = contracted_legs_;
   if (contracted_legs.size()==0) {
     contracted_legs = find_common_legs(t);
   }
   // should throw exception if legs is empty
   std::string rname = '[' + _name + '-' + t._name + ']';
   std::vector<unsigned> rshape;
-  std::vector<int> rlegs;
+  std::vector<short> rlegs;
 
   for (unsigned i=0; i<_ndim; i++) {
     if (std::find(contracted_legs.begin(), contracted_legs.end(),_legs[i]) == contracted_legs.end()) {
