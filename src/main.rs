@@ -7,20 +7,41 @@ struct AbstractTensor {
   ndim: u8,
 }
 
-fn build_abstract_tensor(name: String,  legs: Vec<i8>, shape: Vec<u64>) -> AbstractTensor {
+impl AbstractTensor {
+  pub fn new(name: String,  legs: Vec<i8>, shape: Vec<u64>) -> AbstractTensor {
     AbstractTensor {
-    size: shape.iter().product(),
-    ndim: legs.len() as u8,
-    name,
-    legs,
-    shape,
+      size: shape.iter().product(),
+      ndim: legs.len() as u8,
+      name,
+      legs,
+      shape,
+    }
   }
 }
 
-impl AbstractTensor {
-  fn dot(&self, &t: AbstractTensor) -> AbstractTensor {
-    c_legs = self.find_common_legs(t)
-    legsA = 
+#[derive(Debug)]
+struct TensorNetwork {
+  cpu: u64,
+  mem: u64,
+  contracted: u64,
+  n_tens: u8,
+  tensors: Vec<AbstractTensor>,
+}
+
+
+impl TensorNetwork {
+  pub fn new(tensors: Vec<AbstractTensor>) -> TensorNetwork {
+    let mut mem: u64 = 0;
+    for t in &tensors {
+      mem += t.size;
+    }
+    TensorNetwork {
+      cpu: 0,
+      mem,
+      contracted: 0,
+      n_tens: tensors.len() as u8,
+      tensors,
+    }
   }
 }
 
@@ -28,9 +49,11 @@ impl AbstractTensor {
 fn main() {
   println!("=============   Begin   ===========");
 
-  let t = build_abstract_tensor(String::from("T"),vec!(0,1,2),vec!(10,10,9));
-  println!("{:?}",t);
-
+  let t = AbstractTensor::new(String::from("T"),vec!(0,1,2),vec!(10,10,9));
+  let c = AbstractTensor::new(String::from("C"),vec!(0,3),vec!(10,10));
+  println!("{:?}\n{:?}",t,c);
+  let tn = TensorNetwork::new(vec!(t,c));
+  println!("{:?}",tn);
 
   println!("===========   Completed   =========");
 }
