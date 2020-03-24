@@ -36,7 +36,7 @@ fn size(legs: u64, leg_dim: &Vec<u64>) -> u64 {
   s
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct TensorNetwork<'a> {
   cpu: u64,
   mem: u64,
@@ -61,18 +61,18 @@ impl TensorNetwork<'_> {
 
   fn generate_children(&self) -> Vec<TensorNetwork> {
     let mut children = Vec::new();
-    for i in 0..self.tensors.len()-1 {
-      for j in i+1..self.tensors.len() {
-        let legs = self.tensors[i] & self.tensors[j];
+    for (i,ti) in self.tensors.iter().enumerate() {
+      for (j,tj) in self.tensors[i+1..].iter().enumerate() {
+        let legs = ti & tj;
         if legs != 0 {  // if tensors have common leg
           let mut child_tensors = self.tensors.clone();
-          child_tensors.remove(j);
+          child_tensors.remove(i+1+j);
           child_tensors.remove(i);
-          let ti_dot_tj = self.tensors[i] ^ self.tensors[j];
+          let ti_dot_tj = ti^tj;
           child_tensors.push(ti_dot_tj);
-          let mem = self.tensors.iter().map(|x| size(*x,self.leg_dim)).sum::<u64>() + size(self.tensors[i],self.leg_dim) + size(self.tensors[i],self.leg_dim) + size(ti_dot_tj, self.leg_dim);
+          let mem = self.tensors.iter().map(|t| size(*t,self.leg_dim)).sum::<u64>() + size(*ti,self.leg_dim) + size(*tj,self.leg_dim) + size(ti_dot_tj, self.leg_dim);
           let child = TensorNetwork {
-            cpu: self.cpu + size(self.tensors[i]|self.tensors[j],self.leg_dim),
+            cpu: self.cpu + size(ti|tj,self.leg_dim),
             mem: std::cmp::max(self.mem,mem),
             contracted: self.contracted | legs,
             parent: self.contracted,
