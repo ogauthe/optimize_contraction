@@ -87,6 +87,26 @@ impl TensorNetwork<'_> {
   }
 }
 
+fn bruteforce_contraction(tn0: TensorNetwork, n_c:u64) -> Vec<u8> {
+  //let n_l = tn0.tensors.iter().map(|t| 64-t.leading_zeros()).max().unwrap();  // total number of leg != number of legs to contract
+  let N = 1usize<<n_c;
+  let mut vec:Vec<usize> = (0..N).collect();
+  vec.sort_by_key(|c| c.count_ones());
+  let mut tn_vec:Vec<TensorNetwork> = vec![TensorNetwork { cpu:u64::max_value(), mem:0, contracted:0, parent:0, leg_dim:tn0.leg_dim, tensors: Vec::new()};N];
+  tn_vec[0] = tn0;
+  for &n in vec.iter() {
+    if tn_vec[n].cpu < u64::max_value() {   // some states are not reachable
+      for child in tn_vec[n].generate_children() {
+        if child.cpu < tn_vec[child.contracted as usize].cpu {
+          tn_vec[child.contracted as usize] = child.clone();   // need to clone tensors
+        }
+      }
+    }
+  }
+
+  vec![0,1,2]
+}
+
 fn main() {
   println!("=============   Begin   ===========");
 
@@ -110,6 +130,10 @@ fn main() {
   println!("{:?}",tn2);
   let children3 = tn2.generate_children();
   println!("{:?}",children3);
+  println!("{}",tn0.contracted);
+
+  let legs = bruteforce_contraction(tn0,4);
+  println!("{:?}", legs);
 
   println!("===========   Completed   =========");
 }
