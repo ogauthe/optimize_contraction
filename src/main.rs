@@ -26,37 +26,36 @@ impl AbstractTensor {
 */
 
 
-fn size(legs: u64, leg_dim: &Vec<u64>) -> u64 {
-  let mut s = 1u64;
-  for (i, d) in leg_dim.iter().enumerate() {
-    if (legs >> i)%2 != 0 {
-      s *= d;
-    }
-  }
-  s
-}
 
 #[derive(Debug, Clone)]
-struct TensorNetwork<'a> {
+struct TensorNetwork {
   cpu: u64,
   mem: u64,
   contracted: u64,
   parent: u64,
-  leg_dim: &'a Vec<u64>,
   tensors: Vec<u64>,
 }
 
 
-impl TensorNetwork<'_> {
-  pub fn new(tensors: Vec<u64>, leg_dim: &Vec<u64>) -> TensorNetwork {
+impl TensorNetwork {
+  pub fn new(tensors: Vec<u64>) -> TensorNetwork {
     TensorNetwork {
       cpu: 0,
-      mem: tensors.iter().map(|x| size(*x,leg_dim)).sum(),
+      mem: tensors.iter().map(|x| TensorNetwork::measure(*x)).sum(),
       contracted: 0,
       parent: 0,
-      leg_dim,
       tensors,
     }
+  }
+
+  fn measure(tensor: u64) -> u64 {
+    let mut s = 1u64;
+    for (i, d) in leg_dim.iter().enumerate() {
+      if (tensor >> i)%2 != 0 {
+        s *= d;
+      }
+    }
+    s
   }
 
   fn generate_children(&self) -> Vec<TensorNetwork> {
@@ -70,13 +69,12 @@ impl TensorNetwork<'_> {
           child_tensors.remove(i);
           let ti_dot_tj = ti^tj;
           child_tensors.push(ti_dot_tj);
-          let mem = self.tensors.iter().map(|t| size(*t,self.leg_dim)).sum::<u64>() + size(*ti,self.leg_dim) + size(*tj,self.leg_dim) + size(ti_dot_tj, self.leg_dim);
+          let mem = self.tensors.iter().map(|t| TensorNetwork::measure(*t)).sum::<u64>() + TensorNetwork::measure(*ti) + TensorNetwork::measure(*tj) + TensorNetwork::measure(ti_dot_tj);
           let child = TensorNetwork {
-            cpu: self.cpu + size(ti|tj,self.leg_dim),
+            cpu: self.cpu + TensorNetwork::measure(ti|tj),
             mem: std::cmp::max(self.mem,mem),
             contracted: self.contracted | legs,
             parent: self.contracted,
-            leg_dim: self.leg_dim,
             tensors: child_tensors,
           };
           children.push(child);
@@ -89,10 +87,10 @@ impl TensorNetwork<'_> {
 
 fn bruteforce_contraction(tn0: TensorNetwork, n_c:u64) -> Vec<u8> {
   //let n_l = tn0.tensors.iter().map(|t| 64-t.leading_zeros()).max().unwrap();  // total number of leg != number of legs to contract
-  let N = 1usize<<n_c;
-  let mut vec:Vec<usize> = (0..N).collect();
+  let n = 1usize<<n_c;
+  let mut vec:Vec<usize> = (0..n).collect();
   vec.sort_by_key(|c| c.count_ones());
-  let mut tn_vec:Vec<TensorNetwork> = vec![TensorNetwork { cpu:u64::max_value(), mem:0, contracted:0, parent:0, leg_dim:tn0.leg_dim, tensors: Vec::new()};N];
+  let mut tn_vec:Vec<TensorNetwork> = vec![TensorNetwork { cpu:u64::max_value(), mem:0, contracted:0, parent:0, tensors: Vec::new() };n];
   tn_vec[0] = tn0;
   for &n in vec.iter() {
     if tn_vec[n].cpu < u64::max_value() {   // some states are not reachable
@@ -107,6 +105,7 @@ fn bruteforce_contraction(tn0: TensorNetwork, n_c:u64) -> Vec<u8> {
   vec![0,1,2]
 }
 
+static leg_dim:[u64;8] = [20,20,9,9,20,9,20,9];
 fn main() {
   println!("=============   Begin   ===========");
 
@@ -118,10 +117,9 @@ fn main() {
    *   |   |
    *  -3   -4
    */
-  let leg_dim = vec![20,20,9,9,20,9,20,9];
   let tensors = vec![3,21,74,172];
 
-  let tn0 = TensorNetwork::new(tensors, &leg_dim);
+  let tn0 = TensorNetwork::new(tensors);
   println!("{:?}",tn0);
   let children = tn0.generate_children();
   println!("{:?}",children);
