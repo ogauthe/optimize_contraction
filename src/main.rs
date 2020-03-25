@@ -58,29 +58,30 @@ impl TensorNetwork {
   }
 }
 
-fn bruteforce_contraction(tn0: TensorNetwork, n_c:usize) -> (Vec<usize>,Dimension,Dimension) {
-  //let n_l = tn0.tensors.iter().map(|t| 64-t.leading_zeros()).max().unwrap();  // total number of leg != number of legs to contract
-  let n = 1<<n_c;
-  let mut vec:Vec<usize> = (0..n).collect();
+fn bruteforce_contraction(tensors: Vec<usize>) -> (Vec<usize>,Dimension,Dimension) {
+  let xor = tensors.iter().fold(0, |xor, t| xor^t);
+  let n_tn = 1<<(xor.count_zeros() - xor.leading_zeros());  // 2^number of closed legs
+  let mut vec:Vec<usize> = (0..n_tn).collect();
   vec.sort_by_key(|c| c.count_ones());
-  let mut tn_vec:Vec<TensorNetwork> = vec![TensorNetwork { cpu:Dimension::max_value(), mem:0, contracted:0, parent:0, tensors: Vec::new() };n];
-  tn_vec[0] = tn0;
-  for &n in vec.iter() {
-    for child in tn_vec[n].generate_children() {
+  let mut tn_vec:Vec<TensorNetwork> = vec![TensorNetwork { cpu:Dimension::max_value(), mem:0, contracted:0, parent:0, tensors: Vec::new() };n_tn];
+  tn_vec[0] = TensorNetwork::new(tensors);
+  println!("{:?}",tn_vec[0]);
+  for &k in vec.iter() {
+    for child in tn_vec[k].generate_children() {
       if child.cpu < tn_vec[child.contracted].cpu {
         tn_vec[child.contracted] = child.clone();   // need to clone tensors
       }
     }
   }
 
-  let mut sequence:Vec<usize> = Vec::new();
-  let mut k = n-1;
+  let mut sequence = Vec::new();
+  let mut k = n_tn-1;
   while k != 0 {
     sequence.push(tn_vec[k].contracted);
     k = tn_vec[k].parent;
   }
   sequence.reverse();
-  (sequence, tn_vec[n-1].cpu, tn_vec[n-1].mem)
+  (sequence, tn_vec[n_tn-1].cpu, tn_vec[n_tn-1].mem)
 }
 
 static leg_dim:[Dimension;8] = [20,20,9,9,20,9,20,9];
@@ -106,12 +107,9 @@ fn main() {
 
   let tensors = vec![3,21,74,172];
 
-  let tn0 = TensorNetwork::new(tensors);
-  println!("{:?}",tn0);
-
-  let (sequence,cpu,mem) = bruteforce_contraction(tn0,4);
+  let (sequence,cpu,mem) = bruteforce_contraction(tensors);
+  println!("contraction sequence: {:?}", sequence);
   println!("cpu: {}, mem: {}", cpu, mem);
-  println!("order: {:?}", sequence);
 
   println!("===========   Completed   =========");
 }
