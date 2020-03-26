@@ -1,3 +1,5 @@
+use std::io::Read;  // read_to_string
+
 type Dimension = u64;
 
 #[derive(Debug, Clone)]
@@ -74,14 +76,31 @@ fn bruteforce_contraction(tensors: Vec<usize>) -> (Vec<usize>,Dimension,Dimensio
   }
 
   let mut sequence = Vec::new();
-  let mut k = n_tn-1;
-  while k != 0 {
-    sequence.push(tn_vec[k].contracted);
-    k = tn_vec[k].parent;
+  let mut i = n_tn-1;
+  while i != 0 {
+    sequence.push(tn_vec[i].contracted);
+    i = tn_vec[i].parent;
   }
   sequence.reverse();
   (sequence, tn_vec[n_tn-1].cpu, tn_vec[n_tn-1].mem)
 }
+
+fn tensors_from_input(filename:&String) -> Vec<usize> {
+  let mut file = match std::fs::File::open(filename) {
+    Ok(file) => file,
+    Err(_) => panic!("Cannot open input file"),
+  };
+  let mut contents = String::new();
+  match file.read_to_string(&mut contents) {
+    Ok(contents) => contents,
+    Err(_) => panic!("Failed to read input"),
+  };
+  println!("{}",contents);
+  let tensors = vec![3,21,74,172];
+  tensors
+}
+
+
 
 static leg_dim:[Dimension;8] = [20,20,9,9,20,9,20,9];
 fn main() {
@@ -103,8 +122,12 @@ fn main() {
    * Solution: 0 -> (1 or 2) -> 3 -> 15
    *
    */
-
-  let tensors = vec![3,21,74,172];
+  let args: Vec<_> = std::env::args().collect();
+  if args.len() < 2 {
+    panic!("No input file given");
+  }
+  println!("take input from file: {}", args[1]);
+  let tensors = tensors_from_input(&args[1]);
 
   let (sequence,cpu,mem) = bruteforce_contraction(tensors);
   println!("contraction sequence: {:?}", sequence);
