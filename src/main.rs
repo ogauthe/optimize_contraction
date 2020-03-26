@@ -1,5 +1,3 @@
-use std::io::Read;  // read_to_string
-
 type Dimension = u64;
 
 #[derive(Debug, Clone)]
@@ -61,12 +59,15 @@ impl TensorNetwork {
 }
 
 fn bruteforce_contraction(tensors: Vec<usize>) -> (Vec<usize>,Dimension,Dimension) {
+  // initialize suff
   let xor = tensors.iter().fold(0, |xor, t| xor^t);
   let n_tn = 1<<(xor.count_zeros() - xor.leading_zeros());  // 2^number of closed legs
   let mut indices_by_popcount:Vec<usize> = (0..n_tn).collect();
   indices_by_popcount.sort_by_key(|i| i.count_ones());
   let mut tn_vec = vec![TensorNetwork { cpu:Dimension::max_value(), mem:0, contracted:0, parent:0, tensors: Vec::new() };n_tn];
   tn_vec[0] = TensorNetwork::new(tensors);
+
+  // ==> Core of the programm here <==
   for &i in indices_by_popcount.iter() {
     for child in tn_vec[i].generate_children() {
       if child.cpu < tn_vec[child.contracted].cpu {
@@ -75,6 +76,7 @@ fn bruteforce_contraction(tensors: Vec<usize>) -> (Vec<usize>,Dimension,Dimensio
     }
   }
 
+  // return readable result
   let mut sequence = Vec::new();
   let mut i = n_tn-1;
   while i != 0 {
@@ -85,17 +87,12 @@ fn bruteforce_contraction(tensors: Vec<usize>) -> (Vec<usize>,Dimension,Dimensio
   (sequence, tn_vec[n_tn-1].cpu, tn_vec[n_tn-1].mem)
 }
 
-fn tensors_from_input(filename:&String) -> Vec<usize> {
-  let mut file = match std::fs::File::open(filename) {
-    Ok(file) => file,
-    Err(_) => panic!("Cannot open input file"),
-  };
-  let mut contents = String::new();
-  match file.read_to_string(&mut contents) {
-    Ok(contents) => contents,
-    Err(_) => panic!("Failed to read input"),
-  };
-  println!("{}",contents);
+fn tensors_from_input(input:&String) -> Vec<usize> {
+  let file = std::fs::File::open(input).expect("Cannot open input file");
+  let reader = std::io::BufReader::new(file);
+  let json: serde_json::Value =
+    serde_json::from_reader(reader).expect("JSON was not well-formatted");
+  println!("{}",json);
   let tensors = vec![3,21,74,172];
   tensors
 }
@@ -123,11 +120,14 @@ fn main() {
    *
    */
   let args: Vec<_> = std::env::args().collect();
-  if args.len() < 2 {
-    panic!("No input file given");
-  }
-  println!("take input from file: {}", args[1]);
-  let tensors = tensors_from_input(&args[1]);
+  let input = if args.len() > 2 {
+    println!("take input from file: {}", args[1]);
+    args[1].clone()
+  } else {
+    println!("No input file given, call take input_sample.json");
+    String::from("input_sample.json")
+  };
+  let tensors = tensors_from_input(&input);
 
   let (sequence,cpu,mem) = bruteforce_contraction(tensors);
   println!("contraction sequence: {:?}", sequence);

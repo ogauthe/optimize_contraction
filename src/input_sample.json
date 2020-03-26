@@ -1,0 +1,8 @@
+{
+  "tensors": [
+    { "name": "C", "legs": [0,1], "dimensions": [20,20] },
+    { "name": "T", "legs": [0,2,-1], "dimensions": [20,9,20] },
+    { "name": "T", "legs": [0,-3,3], "dimensions": [20,20,9] },
+    { "name": "E", "legs": [2,3,-4,-3], "dimensions": [9,9,9,9] }
+  ]
+}
