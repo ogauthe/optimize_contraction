@@ -11,7 +11,7 @@ struct TensorNetwork {
 
 
 impl TensorNetwork {
-  pub fn new(tensors: Vec<usize>) -> TensorNetwork {
+  fn new(tensors: Vec<usize>) -> TensorNetwork {
     TensorNetwork {
       cpu: 0,
       mem: tensors.iter().map(|x| TensorNetwork::measure(*x)).sum(),
@@ -61,13 +61,12 @@ impl TensorNetwork {
 fn bruteforce_contraction(tensors: Vec<usize>) -> (Vec<usize>,Dimension,Dimension) {
   let xor = tensors.iter().fold(0, |xor, t| xor^t);
   let n_tn = 1<<(xor.count_zeros() - xor.leading_zeros());  // 2^number of closed legs
-  let mut vec:Vec<usize> = (0..n_tn).collect();
-  vec.sort_by_key(|c| c.count_ones());
-  let mut tn_vec:Vec<TensorNetwork> = vec![TensorNetwork { cpu:Dimension::max_value(), mem:0, contracted:0, parent:0, tensors: Vec::new() };n_tn];
+  let mut indices_by_popcount:Vec<usize> = (0..n_tn).collect();
+  indices_by_popcount.sort_by_key(|i| i.count_ones());
+  let mut tn_vec = vec![TensorNetwork { cpu:Dimension::max_value(), mem:0, contracted:0, parent:0, tensors: Vec::new() };n_tn];
   tn_vec[0] = TensorNetwork::new(tensors);
-  println!("{:?}",tn_vec[0]);
-  for &k in vec.iter() {
-    for child in tn_vec[k].generate_children() {
+  for &i in indices_by_popcount.iter() {
+    for child in tn_vec[i].generate_children() {
       if child.cpu < tn_vec[child.contracted].cpu {
         tn_vec[child.contracted] = child.clone();   // need to clone tensors
       }
