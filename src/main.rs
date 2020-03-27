@@ -9,24 +9,24 @@ struct AbstractTensor {
 
 #[derive(Debug, Clone)]
 struct TensorNetwork<'a> {
+  legs_dim: &'a Vec<Dimension>,
   cpu: Dimension,
   mem: Dimension,
   contracted: usize,
   parent: usize,
-  tensors: Vec<usize>,
-  legs_dim: &'a Vec<Dimension>
+  tensors: Vec<usize>
 }
 
 
 impl<'a> TensorNetwork<'a> {
-  fn new(tensors: Vec<usize>, legs_dim: &'a Vec<Dimension>) -> TensorNetwork<'a> {
+  fn new(legs_dim: &'a Vec<Dimension>, tensors: Vec<usize>)  -> TensorNetwork<'a> {
     let mut tn = TensorNetwork {
+      legs_dim,
       cpu: 0,
       mem: 0,
       contracted: 0,
       parent: 0,
       tensors,
-      legs_dim,
     };
     tn.mem = tn.tensors.iter().map(|&t| tn.measure(t)).sum();
     tn
@@ -53,7 +53,7 @@ impl<'a> TensorNetwork<'a> {
           child_tensors.remove(i);
           let ti_dot_tj = ti^tj;
           child_tensors.push(ti_dot_tj);
-          let mem = self.tensors.iter().map(|t| self.measure(*t)).sum::<Dimension>() + self.measure(*ti) + self.measure(*tj) + self.measure(ti_dot_tj);
+          let mem = self.tensors.iter().map(|&t| self.measure(t)).sum::<Dimension>() + self.measure(*ti) + self.measure(*tj) + self.measure(ti_dot_tj);
           let child = TensorNetwork {
             cpu: self.cpu + self.measure(ti|tj),
             mem: std::cmp::max(self.mem,mem),
@@ -79,8 +79,8 @@ fn bruteforce_contraction(legs_dim: &Vec<Dimension>, tensors: Vec<usize>)  -> (V
   let n_tn = 1<<(xor.count_zeros() - xor.leading_zeros());  // 2^number of closed legs
   let mut indices_by_popcount:Vec<usize> = (0..n_tn).collect();
   indices_by_popcount.sort_by_key(|i| i.count_ones());
-  let mut tn_vec = vec![TensorNetwork { cpu:Dimension::max_value(), mem:0, contracted:0, parent:0, tensors: Vec::new(), legs_dim, };n_tn];
-  tn_vec[0] = TensorNetwork::new(tensors, legs_dim);
+  let mut tn_vec = vec![TensorNetwork{cpu:Dimension::max_value(),mem:0,contracted:0,parent:0,tensors: Vec::new(),legs_dim}; n_tn];
+  tn_vec[0] = TensorNetwork::new(legs_dim,tensors);
 
   // ==> Core of the programm here <==
   for &i in indices_by_popcount.iter() {
