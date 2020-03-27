@@ -44,8 +44,8 @@ impl<'a> TensorNetwork<'a> {
 
   fn generate_children(&self) -> Vec<TensorNetwork<'a>> {
     let mut children = Vec::new();
-    for (i,ti) in self.tensors.iter().enumerate() {
-      for (j,tj) in self.tensors[i+1..].iter().enumerate() {
+    for (i,&ti) in self.tensors.iter().enumerate() {
+      for (j,&tj) in self.tensors[i+1..].iter().enumerate() {
         let legs = ti & tj;
         if legs != 0 {  // if tensors have common leg
           let mut child_tensors = self.tensors.clone();
@@ -53,7 +53,7 @@ impl<'a> TensorNetwork<'a> {
           child_tensors.remove(i);
           let ti_dot_tj = ti^tj;
           child_tensors.push(ti_dot_tj);
-          let mem = self.tensors.iter().map(|&t| self.measure(t)).sum::<Dimension>() + self.measure(*ti) + self.measure(*tj) + self.measure(ti_dot_tj);
+          let mem = self.tensors.iter().map(|&t| self.measure(t)).sum::<Dimension>() + self.measure(ti) + self.measure(tj) + self.measure(ti_dot_tj);
           let child = TensorNetwork {
             cpu: self.cpu + self.measure(ti|tj),
             mem: std::cmp::max(self.mem,mem),
