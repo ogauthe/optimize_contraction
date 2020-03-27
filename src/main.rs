@@ -38,7 +38,19 @@ impl<'a> TensorNetwork<'a> {
       if (tensor >> i)%2 != 0 {
         s *= d;
       }
+      /*else {
+        if tensor >> i == 0 {
+          break;
+        }
+      }*/
     }
+    /*let mut t = tensor;
+    let mut i = 0;
+    while t != 0 {
+      if t%2 { s *= self.legs_dim[i]; }
+      i += 1
+      t = t >> 1;
+    }*/
     s
   }
 
