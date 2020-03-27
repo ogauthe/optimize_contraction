@@ -133,8 +133,8 @@ fn represent_usize(tensors: &Vec<AbstractTensor>) -> (Vec<i8>, Vec<Dimension>, V
       let v = legs_map.insert(l, (true,t.shape[i]));
       if v != None {
         let (once,shape) = v.unwrap();
-        if !once { panic!("A given leg appears more than twice"); }
-        if shape != t.shape[i] { panic!("A given leg has two diffent dimensions"); }
+        if !once { panic!("Leg {} appears more than twice",l); }
+        if shape != t.shape[i] { panic!("Leg {} has two diffent dimensions",l); }
         legs_map.insert(l, (false,t.shape[i]));
       }
     }
@@ -174,10 +174,10 @@ fn sequence_from_repr(legs_indices: &Vec<i8>, sequence_repr: Vec<usize>) -> Vec<
 
 
 fn main() {
-  println!("=============   Begin   ===========");
+  println!("Find optimal contraction sequence of a tensor network.");
 
   let args: Vec<_> = std::env::args().collect();
-  let input = if args.len() > 2 {
+  let input = if args.len() > 1 {
     println!("Take input from file: {}", args[1]);
     args[1].clone()
   } else {
@@ -201,7 +201,7 @@ fn main() {
     String::from("input_sample.json")
   };
   let tensors = tensors_from_input(&input);
-  println!("tensors:");
+  println!("Tensors:");
   for t in &tensors {
     println!("{:?}",t);
   }
@@ -213,5 +213,4 @@ fn main() {
   let sequence = sequence_from_repr(&legs_indices, sequence_repr);
   println!("Sequence: {:?}",sequence);
 
-  println!("===========   Completed   =========");
 }
