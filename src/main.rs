@@ -84,15 +84,15 @@ impl<'a> TensorNetwork<'a> {
 
 /// Take tensors represented as usize integers, with bit i=1 => tensor has leg i.
 /// Legs must be sorted: first every legs to contract in the TN, then open legs.
-fn bruteforce_contraction(legs_dim: &Vec<Dimension>, tensors: Vec<usize>)  -> (Vec<usize>,Dimension,Dimension) {
+fn bruteforce_search(legs_dim: &Vec<Dimension>, tensor_repr: Vec<usize>)  -> (Vec<usize>,Dimension,Dimension) {
 
   // initialize suff
-  let xor = tensors.iter().fold(0, |xor, t| xor^t);
+  let xor = tensor_repr.iter().fold(0, |xor, t| xor^t);
   let n_tn = 1<<(xor.count_zeros() - xor.leading_zeros());  // 2^number of closed legs
   let mut indices_by_popcount:Vec<usize> = (0..n_tn).collect();
   indices_by_popcount.sort_by_key(|i| i.count_ones());
   let mut tn_vec = vec![TensorNetwork{cpu:Dimension::max_value(),mem:0,contracted:0,parent:0,tensors: Vec::new(),legs_dim}; n_tn];
-  tn_vec[0] = TensorNetwork::new(legs_dim,tensors);
+  tn_vec[0] = TensorNetwork::new(legs_dim,tensor_repr);
 
   // ==> Core of the programm here <==
   for &i in indices_by_popcount.iter() {
@@ -103,15 +103,16 @@ fn bruteforce_contraction(legs_dim: &Vec<Dimension>, tensors: Vec<usize>)  -> (V
     }
   }
 
-  // return readable result
-  let mut sequence = Vec::new();
+  // return representation of contracted leg sequence as result
+  let mut sequence_repr = Vec::new();
   let mut i = n_tn-1;
   while i != 0 {
-    sequence.push(tn_vec[i].contracted);
+    sequence_repr.push(tn_vec[i].contracted);
     i = tn_vec[i].parent;
   }
-  sequence.reverse();
-  (sequence, tn_vec[n_tn-1].cpu, tn_vec[n_tn-1].mem)
+  sequence_repr.push(0);
+  sequence_repr.reverse();
+  (sequence_repr, tn_vec[n_tn-1].cpu, tn_vec[n_tn-1].mem)
 }
 
 fn tensors_from_input(input:&String) -> Vec<AbstractTensor> {
@@ -121,7 +122,7 @@ fn tensors_from_input(input:&String) -> Vec<AbstractTensor> {
   tensors
 }
 
-fn usize_tensor_repr(tensors: &Vec<AbstractTensor>) -> (Vec<Dimension>, Vec<usize>) {
+fn represent_usize(tensors: &Vec<AbstractTensor>) -> (Vec<i8>, Vec<Dimension>, Vec<usize>) {
   let mut legs_map = std::collections::HashMap::new();
   for t in tensors {
     for (i,&l) in t.legs.iter().enumerate() {
@@ -143,24 +144,44 @@ fn usize_tensor_repr(tensors: &Vec<AbstractTensor>) -> (Vec<Dimension>, Vec<usiz
   legs_indices.sort_by_key(|l| (legs_map[l].0, l.abs()));
   let legs_dim: Vec<Dimension> = legs_indices.iter().map(|l| legs_map[l].1).collect();
 
-  let mut repr = vec![0;tensors.len()];
+  let mut tensor_repr = vec![0;tensors.len()];
   for (i,t) in tensors.iter().enumerate() {
     for &lt in t.legs.iter() {
-      repr[i] |= 1 << legs_indices.iter().position(|&l| lt==l).unwrap();
+      tensor_repr[i] |= 1 << legs_indices.iter().position(|&l| lt==l).unwrap();
     }
   }
-  (legs_dim,repr)
+  (legs_indices,legs_dim,tensor_repr)
 }
+
+fn sequence_from_repr(legs_indices: &Vec<i8>, sequence_repr: Vec<usize>) -> Vec<Vec<i8>> {
+  let mut sequence = Vec::new();
+  for i in 1..sequence_repr.len() {
+    let mut legs = Vec::new();
+    let mut legs_repr = sequence_repr[i-1]^sequence_repr[i];
+    let mut j = 0;
+    while legs_repr != 0 {
+      if legs_repr%2 !=0 {
+        legs.push(legs_indices[j]);
+      }
+      legs_repr = legs_repr >> 1;
+      j += 1;
+    }
+    sequence.push(legs);
+  }
+  sequence
+}
+
+
 
 fn main() {
   println!("=============   Begin   ===========");
 
   let args: Vec<_> = std::env::args().collect();
   let input = if args.len() > 2 {
-    println!("take input from file: {}", args[1]);
+    println!("Take input from file: {}", args[1]);
     args[1].clone()
   } else {
-    println!("No input file given, call input_sample.json");
+    println!("No input file given, take input from input_sample.json");
     /*   C-0-T- -1
      *   |   |
      *   1   2
@@ -174,17 +195,23 @@ fn main() {
      *  T2: 74
      *  E: 172
      *
-     * Solution: 0 -> (1 or 2) -> 3 -> 15
-     *
+     * Sequence repr: 0 -> (1 or 2) -> 3 -> 15
+     * Sequence: (0,), (1,), (2,3)
      */
     String::from("input_sample.json")
   };
   let tensors = tensors_from_input(&input);
-  let (legs_dim, tensor_repr) = usize_tensor_repr(&tensors);
+  println!("tensors:");
+  for t in &tensors {
+    println!("{:?}",t);
+  }
+  let (legs_indices, legs_dim, tensor_repr) = represent_usize(&tensors);
 
-  let (sequence,cpu,mem) = bruteforce_contraction(&legs_dim, tensor_repr);
-  println!("contraction sequence: {:?}", sequence);
-  println!("cpu: {}, mem: {}", cpu, mem);
+  println!("\nLaunch bruteforce search for best contraction sequence...");
+  let (sequence_repr,cpu,mem) = bruteforce_search(&legs_dim, tensor_repr);
+  println!("Done. cpu: {}, mem: {}", cpu, mem);
+  let sequence = sequence_from_repr(&legs_indices, sequence_repr);
+  println!("Sequence: {:?}",sequence);
 
   println!("===========   Completed   =========");
 }
