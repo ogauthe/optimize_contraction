@@ -28,15 +28,15 @@ impl<'a> TensorNetwork<'a> {
       parent: 0,
       tensors,
     };
-    tn.mem = tn.tensors.iter().map(|&t| tn.measure(t)).sum();
+    tn.mem = tn.tensors.iter().map(|&t| tn.measure(t).unwrap()).sum();
     tn
   }
 
-  fn measure(&self, tensor: usize) -> Dimension {
-    let mut s = 1;
-    for (i, d) in self.legs_dim.iter().enumerate() {
+  fn measure(&self, tensor: usize) -> Option<Dimension> {
+    let mut s:Dimension = 1;
+    for (i, &d) in self.legs_dim.iter().enumerate() {
       if (tensor >> i)%2 != 0 {
-        s *= d;
+        s = s.checked_mul(d)?;
       }
       /*else {
         if tensor >> i == 0 {
@@ -51,29 +51,35 @@ impl<'a> TensorNetwork<'a> {
       i += 1
       t = t >> 1;
     }*/
-    s
+    Some(s)
+  }
+
+  fn contract_tensors(&self, i:usize, j:usize) -> Option<TensorNetwork<'a>> {
+    let ti = self.tensors[i];
+    let tj = self.tensors[j];
+    let legs = ti & tj;
+    if legs == 0 { return None; }
+    let mut child_tensors = self.tensors.clone();
+    child_tensors.remove(std::cmp::max(i,j));
+    child_tensors.remove(std::cmp::min(i,j));
+    let ti_dot_tj = ti^tj;
+    child_tensors.push(ti_dot_tj);
+    let mem = self.tensors.iter().map(|&t| Some(self.measure(t))?).sum::<Option<Dimension>>()? + self.measure(ti)? + self.measure(tj)? + self.measure(ti_dot_tj)?;
+    Some(TensorNetwork {
+      legs_dim: self.legs_dim,
+      cpu: self.cpu.checked_add(self.measure(ti|tj)?)?,
+      mem: std::cmp::max(self.mem,mem),
+      contracted: self.contracted | legs,
+      parent: self.contracted,
+      tensors: child_tensors,
+    })
   }
 
   fn generate_children(&self) -> Vec<TensorNetwork<'a>> {
     let mut children = Vec::new();
-    for (i,&ti) in self.tensors.iter().enumerate() {
-      for (j,&tj) in self.tensors[i+1..].iter().enumerate() {
-        let legs = ti & tj;
-        if legs != 0 {  // if tensors have common leg
-          let mut child_tensors = self.tensors.clone();
-          child_tensors.remove(i+1+j);
-          child_tensors.remove(i);
-          let ti_dot_tj = ti^tj;
-          child_tensors.push(ti_dot_tj);
-          let mem = self.tensors.iter().map(|&t| self.measure(t)).sum::<Dimension>() + self.measure(ti) + self.measure(tj) + self.measure(ti_dot_tj);
-          let child = TensorNetwork {
-            cpu: self.cpu + self.measure(ti|tj),
-            mem: std::cmp::max(self.mem,mem),
-            contracted: self.contracted | legs,
-            parent: self.contracted,
-            tensors: child_tensors,
-            legs_dim: self.legs_dim
-          };
+    for i in 0..self.tensors.len() {
+      for j in i+1..self.tensors.len() {
+        if let Some(child) = self.contract_tensors(i,j) {
           children.push(child);
         }
       }
