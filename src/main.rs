@@ -84,7 +84,7 @@ impl<'a> TensorNetwork<'a> {
 
 /// Take tensors represented as usize integers, with bit i=1 => tensor has leg i.
 /// Legs must be sorted: first every legs to contract in the TN, then open legs.
-fn bruteforce_search(legs_dim: &Vec<Dimension>, tensor_repr: Vec<usize>)  -> (Vec<usize>,Dimension,Dimension) {
+fn exhaustive_search(legs_dim: &Vec<Dimension>, tensor_repr: Vec<usize>)  -> (Vec<usize>,Dimension,Dimension) {
 
   // initialize suff
   let xor = tensor_repr.iter().fold(0, |xor, t| xor^t);
@@ -129,17 +129,16 @@ fn represent_usize(tensors: &Vec<AbstractTensor>) -> (Vec<i8>, Vec<Dimension>, V
       if t.legs.iter().filter(|&&l2| l2 == l).count() > 1 {
         panic!("A vector has twice the same leg. Trace is not allowed.");
       }
-
-      let v = legs_map.insert(l, (true,t.shape[i]));
-      if v != None {
-        let (once,shape) = v.unwrap();
+      if let Some((once,dim)) = legs_map.insert(l, (true,t.shape[i])) {
         if !once { panic!("Leg {} appears more than twice",l); }
-        if shape != t.shape[i] { panic!("Leg {} has two diffent dimensions",l); }
+        if dim != t.shape[i] { panic!("Leg {} has two diffent dimensions",l); }
         legs_map.insert(l, (false,t.shape[i]));
       }
     }
   }
-
+  if legs_map.keys().len() > 64 {
+    panic!("Cannot consider more than 64 legs");
+  }
   let mut legs_indices: Vec<i8> = legs_map.keys().map(|&l| l).collect();
   legs_indices.sort_by_key(|l| (legs_map[l].0, l.abs()));
   let legs_dim: Vec<Dimension> = legs_indices.iter().map(|l| legs_map[l].1).collect();
@@ -208,7 +207,7 @@ fn main() {
   let (legs_indices, legs_dim, tensor_repr) = represent_usize(&tensors);
 
   println!("\nLaunch bruteforce search for best contraction sequence...");
-  let (sequence_repr,cpu,mem) = bruteforce_search(&legs_dim, tensor_repr);
+  let (sequence_repr,cpu,mem) = exhaustive_search(&legs_dim, tensor_repr);
   println!("Done. cpu: {}, mem: {}", cpu, mem);
   let sequence = sequence_from_repr(&legs_indices, sequence_repr);
   println!("Sequence: {:?}",sequence);
