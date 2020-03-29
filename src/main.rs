@@ -82,37 +82,60 @@ impl<'a> TensorNetwork<'a> {
   }
 }
 
+
+fn greedy_search(legs_dim: &Vec<Dimension>, tensor_repr: Vec<usize>)  -> (Vec<usize>,Dimension,Dimension) {
+  let xor = tensor_repr.iter().fold(0, |xor, t| xor^t);
+  let max_tn = (1<<(xor.count_zeros() - xor.leading_zeros())) - 1;  // 2^number of closed legs - 1
+  let mut tn_vec = vec![TensorNetwork::new(legs_dim,tensor_repr)];
+  let mut last_contracted = 0;
+  while last_contracted < max_tn {
+    let children = tn_vec.last().unwrap().generate_children();
+    let greedy_child = children.iter().min_by_key(|&c| c.cpu).unwrap();
+    tn_vec.push(greedy_child.clone());
+    last_contracted = greedy_child.contracted;
+  }
+  let final_tn = tn_vec.last().unwrap();
+  (tn_vec.iter().map(|tn| tn.contracted).collect(),final_tn.cpu,final_tn.mem)
+}
+
 /// Take tensors represented as usize integers, with bit i=1 => tensor has leg i.
 /// Legs must be sorted: first every legs to contract in the TN, then open legs.
 fn exhaustive_search(legs_dim: &Vec<Dimension>, tensor_repr: Vec<usize>)  -> (Vec<usize>,Dimension,Dimension) {
 
   // initialize suff
   let xor = tensor_repr.iter().fold(0, |xor, t| xor^t);
-  let n_tn = 1<<(xor.count_zeros() - xor.leading_zeros());  // 2^number of closed legs
-  let mut indices_by_popcount:Vec<usize> = (0..n_tn).collect();
+  let max_tn = (1<<(xor.count_zeros() - xor.leading_zeros())) - 1;  // 2^number of closed legs - 1
+  let mut indices_by_popcount:Vec<usize> = (0..max_tn+1).collect();
   indices_by_popcount.sort_by_key(|i| i.count_ones());
-  let mut tn_vec = vec![TensorNetwork{cpu:Dimension::max_value(),mem:0,contracted:0,parent:0,tensors: Vec::new(),legs_dim}; n_tn];
+  let greedy = greedy_search(legs_dim, tensor_repr.clone()); // no need to continue paths that go beyond any final result
+  println!("greedy result: {:?}",greedy);
+  let mut tn_vec = vec![TensorNetwork{cpu:greedy.1,mem:greedy.2,contracted:0,parent:0,tensors: Vec::new(),legs_dim}; max_tn+1];
   tn_vec[0] = TensorNetwork::new(legs_dim,tensor_repr);
+  tn_vec[max_tn].parent = greedy.0[greedy.0.len()-2];  // in case greedy search is optimal
 
   // ==> Core of the programm here <==
+  let mut count = 0;
   for &i in indices_by_popcount.iter() {
     for child in tn_vec[i].generate_children() {
-      if child.cpu < tn_vec[child.contracted].cpu {
+      if child.cpu < std::cmp::min(tn_vec[child.contracted].cpu,tn_vec[max_tn].cpu) {
+        count += 1;
         tn_vec[child.contracted] = child.clone();   // need to clone tensors
       }
     }
   }
+  println!("number of computed tn: {}",tn_vec.iter().filter(|tn| tn.cpu<greedy.1).count());
+  println!("count: {}",count);
 
   // return representation of contracted leg sequence as result
   let mut sequence_repr = Vec::new();
-  let mut i = n_tn-1;
+  let mut i = max_tn;
   while i != 0 {
     sequence_repr.push(tn_vec[i].contracted);
     i = tn_vec[i].parent;
   }
   sequence_repr.push(0);
   sequence_repr.reverse();
-  (sequence_repr, tn_vec[n_tn-1].cpu, tn_vec[n_tn-1].mem)
+  (sequence_repr, tn_vec[max_tn].cpu, tn_vec[max_tn].mem)
 }
 
 fn tensors_from_input(input:&String) -> Vec<AbstractTensor> {
