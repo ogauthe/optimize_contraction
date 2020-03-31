@@ -103,20 +103,17 @@ impl<'a> TensorNetwork<'a> {
 }
 
 
-fn greedy_search(legs_dim: &Vec<Dimension>, tensor_repr: Vec<usize>)  -> (Vec<usize>,Dimension,Dimension) {
+fn greedy_search(legs_dim: &Vec<Dimension>, tensor_repr: Vec<usize>)  -> (Vec<usize>,TensorNetwork) {
   let xor = tensor_repr.iter().fold(0, |xor, t| xor^t);
   let max_tn = (1<<(xor.count_zeros() - xor.leading_zeros())) - 1;  // 2^number of closed legs - 1
-  let mut tn_vec = vec![TensorNetwork::new(legs_dim,tensor_repr)];
-  let mut last_contracted = 0;
-  while last_contracted < max_tn {
-    let children = tn_vec.last().unwrap().generate_children();
-    let greedy_child = children.iter().min_by_key(|&c| c.cpu).unwrap();
-    tn_vec.push(greedy_child.clone());
-    last_contracted = greedy_child.contracted;
+  let mut tn = TensorNetwork::new(legs_dim,tensor_repr);
+  let mut sequence_repr = vec![0];
+  while tn.contracted < max_tn {
+    tn = tn.generate_children().children.iter().min_by_key(|&c| c.cpu).unwrap();
+    sequence_repr.push(tn.contracted);
   }
-  let final_tn = tn_vec.last().unwrap();
-  (tn_vec.iter().map(|tn| tn.contracted).collect(),final_tn.cpu,final_tn.mem)
-}
+  (sequence_repr,tn)
+  }
 
 /// Take tensors represented as usize integers, with bit i=1 => tensor has leg i.
 /// Legs must be sorted: first every legs to contract in the TN, then open legs.
