@@ -117,7 +117,7 @@ fn greedy_search(legs_dim: &Vec<Dimension>, tensor_repr: Vec<usize>)  -> (Vec<us
 
 /// Take tensors represented as usize integers, with bit i=1 => tensor has leg i.
 /// Legs must be sorted: first every legs to contract in the TN, then open legs.
-fn exhaustive_search(legs_dim: &Vec<Dimension>, tensor_repr: Vec<usize>)  -> (Vec<usize>,Dimension,Dimension) {
+fn exhaustive_search(legs_dim: &Vec<Dimension>, tensor_repr: Vec<usize>)  -> (Vec<usize>,TensorNetwork) {
 // TODO use maps instad of vector: map_vec[popcount(i)][i] = tn
 // store only the small number of computed points
 // Q: inline greedy cpu and greedy memory to start filling the map?
@@ -126,40 +126,56 @@ fn exhaustive_search(legs_dim: &Vec<Dimension>, tensor_repr: Vec<usize>)  -> (Ve
 // for i in 0..n_legs { for v in map_vec[i] { v.generate_children() } }
 // note that with a map, contracted can be u128 and up to 128 legs could be reached.
 
+  // first execute greedy search as reasonable upper bound. Do not explore path more expensive than greedy result.
+  let greedy = greedy_search(legs_dim, tensor_repr.clone());
+  println!("greedy result: {:?}",greedy);
+
   // initialize suff
   let xor = tensor_repr.iter().fold(0, |xor, t| xor^t);
-  let max_tn = (1<<(xor.count_zeros() - xor.leading_zeros())) - 1;  // 2^number of closed legs - 1
-  let mut indices_by_popcount:Vec<usize> = (0..max_tn+1).collect();
-  indices_by_popcount.sort_by_key(|i| i.count_ones());
-  let greedy = greedy_search(legs_dim, tensor_repr.clone()); // no need to continue paths that go beyond any final result
-  println!("greedy result: {:?}",greedy);
-  let mut tn_vec = vec![TensorNetwork{cpu:greedy.1,mem:greedy.2,contracted:0,parent:0,tensors: Vec::new(),legs_dim}; max_tn+1];
-  tn_vec[0] = TensorNetwork::new(legs_dim,tensor_repr);
-  tn_vec[max_tn].parent = greedy.0[greedy.0.len()-2];  // in case greedy search is optimal
+  let n_c = (xor.count_zeros() - xor.leading_zeros()) as usize;
+  let max_tn = (1<<n_c) - 1;  // 2^number of closed legs - 1
+  let mut generation_maps = vec![std::collections::HashMap::new(); n_c];  // put fully contracted outside map
+  generation_maps[0].insert(0,TensorNetwork::new(legs_dim,tensor_repr));  // to avoid evaluting hash function to get best cpu
 
   // ==> Core of the programm here <==
-  let mut count = 0;
-  for &i in indices_by_popcount.iter() {
-    for child in tn_vec[i].generate_children() {
-      if child.cpu < std::cmp::min(tn_vec[child.contracted].cpu,tn_vec[max_tn].cpu) {
-        count += 1;
-        tn_vec[child.contracted] = child.clone();   // need to clone tensors
+  let mut best = greedy.1.clone();
+  //let mut count = 0;
+  for generation in 0..n_c {
+    let (current_generation, next_generations) = generation_maps[generation..].split_first_mut().unwrap();
+      for (_,parent) in current_generation { // best.cpu may change, cannot filter iter
+      if parent.cpu < best.cpu {
+        for child in parent.generate_children() {
+          if child.cpu < best.cpu { // // do not consider bad children
+            let child_generation = child.contracted.count_ones() as usize;
+              if child_generation == n_c {
+                best = child.clone();
+              } else {
+                if let Some(current) = next_generations[child_generation-generation-1].get(&child.contracted) {
+                  if child.cpu < current.cpu {
+                   next_generations[child_generation-generation-1].insert(child.contracted,child.clone());  // child is better than current
+                  }
+                } else {
+                  next_generations[child_generation-generation-1].insert(child.contracted,child.clone());  // child is new and ok, insert it
+                }
+              }
+            }
+          }
+        }
       }
     }
-  }
-  println!("number of computed tn: {}",tn_vec.iter().filter(|tn| tn.cpu<greedy.1).count());
-  println!("count: {}",count);
+
+  //println!("number of computed tn: {}",tn_vec.iter().filter(|tn| tn.cpu<greedy.1).count());
+  //println!("count: {}",count);
 
   // return representation of contracted leg sequence as result
-  let mut sequence_repr = Vec::new();
-  let mut i = max_tn;
+  let mut sequence_repr = vec![max_tn,best.parent];
+  let mut i = best.parent;
   while i != 0 {
-    sequence_repr.push(tn_vec[i].contracted);
-    i = tn_vec[i].parent;
+    i = generation_maps[i.count_ones() as usize].get(&i).unwrap().parent;
+    sequence_repr.push(i);
   }
-  sequence_repr.push(0);
   sequence_repr.reverse();
-  (sequence_repr, tn_vec[max_tn].cpu, tn_vec[max_tn].mem)
+  (sequence_repr, best.clone())
 }
 
 fn tensors_from_input(input:&String) -> Vec<AbstractTensor> {
@@ -254,8 +270,8 @@ fn main() {
   let (legs_indices, legs_dim, tensor_repr) = represent_usize(&tensors);
 
   println!("\nLaunch bruteforce search for best contraction sequence...");
-  let (sequence_repr,cpu,mem) = exhaustive_search(&legs_dim, tensor_repr);
-  println!("Done. cpu: {}, mem: {}", cpu, mem);
+  let (sequence_repr,best_tn) = exhaustive_search(&legs_dim, tensor_repr);
+  println!("Done. cpu: {}, mem: {}", best_tn.cpu, best_tn.mem);
   let sequence = sequence_from_repr(&legs_indices, sequence_repr);
   println!("Sequence: {:?}",sequence);
 
