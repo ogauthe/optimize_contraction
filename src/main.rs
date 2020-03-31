@@ -109,7 +109,7 @@ fn greedy_search(legs_dim: &Vec<Dimension>, tensor_repr: Vec<usize>)  -> (Vec<us
   let mut tn = TensorNetwork::new(legs_dim,tensor_repr);
   let mut sequence_repr = vec![0];
   while tn.contracted < max_tn {
-    tn = tn.generate_children().children.iter().min_by_key(|&c| c.cpu).unwrap();
+    tn = tn.generate_children().iter().min_by_key(|&c| c.cpu).unwrap().clone();
     sequence_repr.push(tn.contracted);
   }
   (sequence_repr,tn)
