@@ -28,11 +28,21 @@ impl<'a> TensorNetwork<'a> {
       parent: 0,
       tensors,
     };
-    tn.mem = tn.tensors.iter().map(|&t| tn.measure(t).unwrap()).sum();
+    tn.mem = tn.tensors.iter().map(|&t| tn.checked_measure(t).unwrap()).sum();
     tn
   }
 
-  fn measure(&self, tensor: usize) -> Option<Dimension> {  // deal with high risk of overflow
+  fn measure(&self, tensor: usize) -> Dimension {
+    let mut s:Dimension = 1;
+    for (i, &d) in self.legs_dim.iter().enumerate() {
+      if (tensor >> i)%2 != 0 {
+        s *= d;
+      }
+    }
+    s
+  }
+
+  fn checked_measure(&self, tensor: usize) -> Option<Dimension> {  // deal with high risk of overflow
     let mut s:Dimension = 1;                               // other solution: Dimension -> f64
     for (i, &d) in self.legs_dim.iter().enumerate() {
       if (tensor >> i)%2 != 0 {
@@ -59,16 +69,20 @@ impl<'a> TensorNetwork<'a> {
     let tj = self.tensors[j];
     let legs = ti & tj;
     if legs == 0 { return None; }
+    let cpu = self.cpu.checked_add(self.checked_measure(ti|tj)?)?;  // test overflow the soonest possible
     let mut child_tensors = self.tensors.clone();
     child_tensors.remove(std::cmp::max(i,j));
     child_tensors.remove(std::cmp::min(i,j));
     let ti_dot_tj = ti^tj;
     child_tensors.push(ti_dot_tj);
-    let mem = self.tensors.iter().map(|&t| Some(self.measure(t))?).sum::<Option<Dimension>>()? + self.measure(ti)? + self.measure(tj)? + self.measure(ti_dot_tj)?;
+    // Assume copies of both ti and tj are needed in order to arange legs for BLAS (upper bound)
+    // Assume ti and tj are destroyed after copy, and their copies are destroyed after contraction
+    // then max memory is sum(t_mem, including i and j) + max_mem(ti,tj,ti.tj)
+    let mem = self.tensors.iter().map(|&t| self.measure(t)).sum::<Dimension>() + std::cmp::max(self.measure(ti),std::cmp::max(self.measure(tj),self.measure(ti_dot_tj)));  // cpu cost is always > memory cost, hence no overflow here
     Some(TensorNetwork {
       legs_dim: self.legs_dim,
-      cpu: self.cpu.checked_add(self.measure(ti|tj)?)?,
-      mem: std::cmp::max(self.mem,mem),
+      cpu,
+      mem: std::cmp::max(self.mem,mem), // mem is an upper bond for whole contraction.
       contracted: self.contracted | legs,
       parent: self.contracted,
       tensors: child_tensors,
