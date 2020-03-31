@@ -32,8 +32,8 @@ impl<'a> TensorNetwork<'a> {
     tn
   }
 
-  fn measure(&self, tensor: usize) -> Option<Dimension> {
-    let mut s:Dimension = 1;
+  fn measure(&self, tensor: usize) -> Option<Dimension> {  // deal with high risk of overflow
+    let mut s:Dimension = 1;                               // other solution: Dimension -> f64
     for (i, &d) in self.legs_dim.iter().enumerate() {
       if (tensor >> i)%2 != 0 {
         s = s.checked_mul(d)?;
@@ -49,7 +49,7 @@ impl<'a> TensorNetwork<'a> {
     while t != 0 {
       if t%2 { s *= self.legs_dim[i]; }
       i += 1
-      t = t >> 1;
+      t >>= 1;
     }*/
     Some(s)
   }
@@ -107,6 +107,13 @@ fn greedy_search(legs_dim: &Vec<Dimension>, tensor_repr: Vec<usize>)  -> (Vec<us
 /// Take tensors represented as usize integers, with bit i=1 => tensor has leg i.
 /// Legs must be sorted: first every legs to contract in the TN, then open legs.
 fn exhaustive_search(legs_dim: &Vec<Dimension>, tensor_repr: Vec<usize>)  -> (Vec<usize>,Dimension,Dimension) {
+// TODO use maps instad of vector: map_vec[popcount(i)][i] = tn
+// store only the small number of computed points
+// Q: inline greedy cpu and greedy memory to start filling the map?
+// Q: also launch random walks? => most of them will be shitty. Avoid.
+// need to loop on each map:
+// for i in 0..n_legs { for v in map_vec[i] { v.generate_children() } }
+// note that with a map, contracted can be u128 and up to 128 legs could be reached.
 
   // initialize suff
   let xor = tensor_repr.iter().fold(0, |xor, t| xor^t);
