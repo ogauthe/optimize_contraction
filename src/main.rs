@@ -1,5 +1,5 @@
 use std::time::Instant;
-use std::collections::HashMap;
+use std::collections::{HashMap,hash_map::Entry};
 
 type Dimension = u64;
 
@@ -150,23 +150,19 @@ fn exhaustive_search(legs_dim: &Vec<Dimension>, tensor_repr: Vec<usize>)  -> (Ve
         for child in parent.generate_children() {
           if child.cpu < best.cpu { // // do not consider bad children
             let child_generation = child.contracted.count_ones() as usize;
-              if child_generation == n_c {
-                best = child.clone();
-              } else {
-                if let Some(current) = next_generations[child_generation-generation-1].get(&child.contracted) {
-                  if child.cpu < current.cpu {
-                   next_generations[child_generation-generation-1].insert(child.contracted,child.clone());  // child is better than current
-                  }
-                } else {
-                  next_generations[child_generation-generation-1].insert(child.contracted,child.clone());  // child is new and ok, insert it
-                }
+            if child_generation == n_c {
+              best = child.clone();
+            } else {
+              match next_generations[child_generation-generation-1].entry(child.contracted) {
+                Entry::Occupied(mut entry) => if child.cpu < entry.get().cpu { entry.insert(child.clone()); }, // keep current if better than child
+                Entry::Vacant(entry) => { entry.insert(child.clone()); }
               }
             }
           }
         }
       }
     }
-
+  }
   //println!("number of computed tn: {}",tn_vec.iter().filter(|tn| tn.cpu<greedy.1).count());
   //println!("count: {}",count);
 
