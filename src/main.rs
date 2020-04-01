@@ -4,20 +4,23 @@ use std::collections::{HashMap,hash_map::Entry};
 type Dimension = u64;
 
 #[derive(Debug, Clone, serde::Deserialize)]
-struct AbstractTensor {
-  name: String,
+struct AbstractTensor { // convenient struct to read json input file
+  name: String,            // not currently used
   shape: Vec<Dimension>,
   legs: Vec<i8>,
 }
 
+// Define binary representation for tensors: bit i=1 => tensor has open leg i.
+// Legs are sorted: first every legs to contract in the TN, then open legs.
+// A TN is uniquely identified by the legs that have been contracted, in binary form.
 #[derive(Debug, Clone)]
 struct TensorNetwork<'a> {
-  legs_dim: &'a Vec<Dimension>,
-  cpu: Dimension,
-  mem: Dimension,
-  id: usize,
-  parent: usize,
-  tensors: Vec<usize>
+  legs_dim: &'a Vec<Dimension>,   // define a binary representation for TN legs
+  cpu: Dimension,     // cpu cost to reach this TN (sum of all past steps)
+  mem: Dimension,     // upper bound for needed memory to reach this TN (assume copies at each contraction)
+  id: usize,          // binary representation of contracted legs: bit i is 1 if leg i has been contracted
+  parent: usize,      // id of parent TN, initial TN (id 0) is its own parent
+  tensors: Vec<usize> // binary representation of tensors in TN
 }
 
 
@@ -67,9 +70,9 @@ impl<'a> TensorNetwork<'a> {
     Some(s)
   }
 
-  fn contract_tensors(&self, i:usize, j:usize) -> Option<TensorNetwork<'a>> {
-    let ti = self.tensors[i];
-    let tj = self.tensors[j];
+  fn contract_tensors(&self, i:usize, j:usize) -> Option<TensorNetwork<'a>> { // compute TN child obtained by contraction
+    let ti = self.tensors[i];                                                 // of tensors i and j. Returns None if no common
+    let tj = self.tensors[j];                                                 // leg or cpu overflow.
     let legs = ti & tj;
     if legs == 0 { return None; }
     let cpu = self.cpu.checked_add(self.checked_measure(ti|tj)?)?;  // test overflow the soonest possible
@@ -118,40 +121,35 @@ fn greedy_search(legs_dim: &Vec<Dimension>, tensor_repr: Vec<usize>)  -> (Vec<us
   (sequence_repr,tn)
 }
 
-/// Take tensors represented as usize integers, with bit i=1 => tensor has leg i.
-/// Legs must be sorted: first every legs to contract in the TN, then open legs.
 fn exhaustive_search(legs_dim: &Vec<Dimension>, tensor_repr: Vec<usize>)  -> (Vec<usize>,TensorNetwork) {
 
-  // first execute greedy search as reasonable upper bound. Do not explore path more expensive than greedy result.
+  // first execute greedy search as reasonable upper bound.
   let mut best = greedy_search(legs_dim, tensor_repr.clone()).1;
-  println!("greedy result: {:?}", best);
+  println!("\ngreedy result: {:?}", best);
 
   // initialize suff
   let xor = tensor_repr.iter().fold(0, |xor, t| xor^t);
   let n_c = (xor.count_zeros() - xor.leading_zeros()) as usize;
-  let max_tn = (1<<n_c) - 1;  // 2^number of closed legs - 1
   let mut generation_maps = vec![HashMap::new(); n_c];  // put fully contracted outside map (access without hash cost)
   generation_maps[0].insert(0,TensorNetwork::new(legs_dim,tensor_repr));
 
-  // first execute greedy search as reasonable upper bound. Do not explore path more expensive than greedy result.
-  let mut best = greedy_search(legs_dim, tensor_repr.clone()).1;
-  println!("greedy result: {:?}",best);
-
   // ==> Core of the programm here <==
+  println!("\nLaunch exhaustive search for best contraction sequence...");
+  let start = Instant::now();
   for generation in 0..n_c {
     let (current_generation, next_generations) = generation_maps[generation..].split_first_mut().unwrap();
-    for parent in current_generation.values() { // best.cpu may change, cannot filter iter
-      if parent.cpu < best.cpu {
-        for child in parent.generate_children() {  // best.cpu may change, cannot filter iter
-          if child.cpu < best.cpu {  // bad children loose their place
+    for parent in current_generation.values() {
+      if parent.cpu < best.cpu {    // Do not explore path already more expensive than currrent best result.
+        for child in parent.generate_children() { // best.cpu may change, cannot filter iter
+          if child.cpu < best.cpu {  // bad children loose their turn
             let child_generation = child.id.count_ones() as usize;
             if child_generation == n_c {
               best = child.clone();
             } else {
-              match next_generations[child_generation-generation-1].entry(child.id) {
+              match next_generations[child_generation-generation-1].entry(child.id) { // evalutate hash function only once
                 Entry::Occupied(mut entry) => if child.cpu < entry.get().cpu {
-                  entry.insert(child.clone()); // keep current if better than child
-                },
+                  entry.insert(child.clone());
+                },    // do nothing if current entry is better than child
                 Entry::Vacant(entry) => { entry.insert(child.clone()); }
               }
             }
@@ -160,19 +158,22 @@ fn exhaustive_search(legs_dim: &Vec<Dimension>, tensor_repr: Vec<usize>)  -> (Ve
       }
     }
   }
+  let duration = start.elapsed();
+  println!("Done. Time elapsed = {:?}", duration);
+  // ==> end of expensive part <==
 
   // return representation of contracted leg sequence as result
-  let mut sequence_repr = vec![max_tn,best.parent];
-  let mut i = best.parent;
-  while i != 0 {
-    i = generation_maps[i.count_ones() as usize].get(&i).unwrap().parent;
-    sequence_repr.push(i);
+  let mut sequence_repr = vec![best.id, best.parent];
+  let mut id = best.parent;
+  while id != 0 {
+    id = generation_maps[id.count_ones() as usize].get(&id).unwrap().parent;
+    sequence_repr.push(id);
   }
   sequence_repr.reverse();
-  (sequence_repr, best.clone())
+  (sequence_repr, best)
 }
 
-fn tensors_from_input(input:&String) -> Vec<AbstractTensor> {
+fn tensors_from_input(input: &str) -> Vec<AbstractTensor> {
   let file = std::fs::File::open(input).expect("Cannot open input file");
   let reader = std::io::BufReader::new(file);
   let tensors: Vec<AbstractTensor> = serde_json::from_reader(reader).expect("JSON was not well-formatted");
@@ -197,6 +198,7 @@ fn represent_usize(tensors: &Vec<AbstractTensor>) -> (Vec<i8>, Vec<Dimension>, V
     panic!("Cannot consider more than 64 legs");
   }
   let mut legs_indices: Vec<i8> = legs_map.keys().map(|&l| l).collect();
+  // expect l<0 for free legs and l>0 for legs to contract (not mandatory)
   legs_indices.sort_by_key(|l| (legs_map[l].0, l.abs()));
   let legs_dim: Vec<Dimension> = legs_indices.iter().map(|l| legs_map[l].1).collect();
 
@@ -219,7 +221,7 @@ fn sequence_from_repr(legs_indices: &Vec<i8>, sequence_repr: Vec<usize>) -> Vec<
       if legs_repr%2 !=0 {
         legs.push(legs_indices[j]);
       }
-      legs_repr = legs_repr >> 1;
+      legs_repr >>= 1;
       j += 1;
     }
     sequence.push(legs);
@@ -235,10 +237,12 @@ fn main() {
   let args: Vec<_> = std::env::args().collect();
   let input = if args.len() > 1 {
     println!("Take input from file: {}", args[1]);
-    args[1].clone()
+    &args[1]
   } else {
     println!("No input file given, take input from input_sample.json");
-    /*   C-0-T- -1
+    /* input sample: symmetric CTMRG step.
+     *
+     *   C-0-T- -1
      *   |   |
      *   1   2
      *   |   |
@@ -246,15 +250,16 @@ fn main() {
      *   |   |
      *  -3   -4
      *
+     * tensor binary representations:
      *  C: 3
      *  T1: 21
      *  T2: 74
      *  E: 172
      *
-     * Sequence repr: 0 -> (1 or 2) -> 3 -> 15
-     * Sequence: (0,), (1,), (2,3)
+     * TN sequence binary representation: 0 -> (1 or 2) -> 3 -> 15
+     * leg contraction sequence: (0,), (1,), (2,3)
      */
-    String::from("input_sample.json")
+    "input_sample.json"
   };
   let tensors = tensors_from_input(&input);
   println!("Tensors:");
@@ -263,11 +268,7 @@ fn main() {
   }
   let (legs_indices, legs_dim, tensor_repr) = represent_usize(&tensors);
 
-  println!("\nLaunch bruteforce search for best contraction sequence...");
-  let start = Instant::now();
   let (sequence_repr,best_tn) = exhaustive_search(&legs_dim, tensor_repr);
-  let duration = start.elapsed();
-  println!("Done. Time elapsed = {:?}", duration);
   let sequence = sequence_from_repr(&legs_indices, sequence_repr);
   println!("cpu: {}, mem: {}", best_tn.cpu, best_tn.mem);
   println!("leg contraction sequence: {:?}",sequence);
