@@ -1,3 +1,6 @@
+use std::time::Instant;
+use std::collections::HashMap;
+
 type Dimension = u64;
 
 #[derive(Debug, Clone, serde::Deserialize)]
@@ -134,7 +137,7 @@ fn exhaustive_search(legs_dim: &Vec<Dimension>, tensor_repr: Vec<usize>)  -> (Ve
   let xor = tensor_repr.iter().fold(0, |xor, t| xor^t);
   let n_c = (xor.count_zeros() - xor.leading_zeros()) as usize;
   let max_tn = (1<<n_c) - 1;  // 2^number of closed legs - 1
-  let mut generation_maps = vec![std::collections::HashMap::new(); n_c];  // put fully contracted outside map
+  let mut generation_maps = vec![HashMap::new(); n_c];  // put fully id outside map
   generation_maps[0].insert(0,TensorNetwork::new(legs_dim,tensor_repr));  // to avoid evaluting hash function to get best cpu
 
   // ==> Core of the programm here <==
@@ -186,7 +189,7 @@ fn tensors_from_input(input:&String) -> Vec<AbstractTensor> {
 }
 
 fn represent_usize(tensors: &Vec<AbstractTensor>) -> (Vec<i8>, Vec<Dimension>, Vec<usize>) {
-  let mut legs_map = std::collections::HashMap::new();
+  let mut legs_map = HashMap::new();
   for t in tensors {
     for (i,&l) in t.legs.iter().enumerate() {
       if t.legs.iter().filter(|&&l2| l2 == l).count() > 1 {
@@ -270,9 +273,12 @@ fn main() {
   let (legs_indices, legs_dim, tensor_repr) = represent_usize(&tensors);
 
   println!("\nLaunch bruteforce search for best contraction sequence...");
+  let start = Instant::now();
   let (sequence_repr,best_tn) = exhaustive_search(&legs_dim, tensor_repr);
-  println!("Done. cpu: {}, mem: {}", best_tn.cpu, best_tn.mem);
+  let duration = start.elapsed();
+  println!("Done. Time elapsed = {:?}", duration);
   let sequence = sequence_from_repr(&legs_indices, sequence_repr);
-  println!("Sequence: {:?}",sequence);
+  println!("cpu: {}, mem: {}", best_tn.cpu, best_tn.mem);
+  println!("leg contraction sequence: {:?}",sequence);
 
 }
