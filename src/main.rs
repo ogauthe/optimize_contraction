@@ -1,6 +1,6 @@
 use std::time::Instant;
-use std::collections::{HashMap,hash_map::Entry};
-use fnv::FnvHashMap;
+use std::collections::hash_map::Entry;
+use fnv::FnvHashMap;  // faster than std for integer keys
 
 type Dimension = u64;
 type BinaryTensor = u64;
@@ -149,10 +149,10 @@ fn exhaustive_search(legs_dim: &Vec<Dimension>, tensor_repr: Vec<BinaryTensor>) 
               best = child.clone();
             } else {
               match next_generations[child_generation-generation-1].entry(child.id) { // evalutate hash function only once
+                Entry::Vacant(entry) => { entry.insert(child.clone()); },
                 Entry::Occupied(mut entry) => if child.cpu < entry.get().cpu {
                   entry.insert(child.clone());
-                },    // do nothing if current entry is better than child
-                Entry::Vacant(entry) => { entry.insert(child.clone()); }
+                }    // do nothing if current entry is better than child
               }
             }
           }
@@ -189,10 +189,14 @@ fn represent_binary(tensors: &Vec<AbstractTensor>) -> (Vec<i8>, Vec<Dimension>, 
       if t.legs.iter().filter(|&&l2| l2 == l).count() > 1 {
         panic!("A vector has twice the same leg. Trace is not allowed.");
       }
-      if let Some((once,dim)) = legs_map.insert(l, (true,t.shape[i])) {
-        if !once { panic!("Leg {} appears more than twice",l); }
-        if dim != t.shape[i] { panic!("Leg {} has two diffent dimensions",l); }
-        legs_map.insert(l, (false,t.shape[i]));
+      match legs_map.entry(l) {
+        Entry::Vacant(entry) => { entry.insert((true,t.shape[i])); }
+        Entry::Occupied(mut entry) => {
+          let (ref mut once, ref dim) = entry.get_mut();
+          if !*once { panic!("Leg {} appears more than twice",l); }
+          if *dim != t.shape[i] { panic!("Leg {} has two diffent dimensions",l); }
+          *once = false;
+        }
       }
     }
   }
