@@ -1,5 +1,6 @@
 use std::time::Instant;
 use std::collections::{HashMap,hash_map::Entry};
+use fnv::FnvHashMap;
 
 type Dimension = u64;
 
@@ -130,7 +131,7 @@ fn exhaustive_search(legs_dim: &Vec<Dimension>, tensor_repr: Vec<usize>)  -> (Ve
   // initialize suff
   let xor = tensor_repr.iter().fold(0, |xor, t| xor^t);
   let n_c = (xor.count_zeros() - xor.leading_zeros()) as usize;
-  let mut generation_maps = vec![HashMap::new(); n_c];  // put fully contracted outside map (access without hash cost)
+  let mut generation_maps = vec![FnvHashMap::default(); n_c];  // put fully contracted outside map (access without hash cost)
   generation_maps[0].insert(0,TensorNetwork::new(legs_dim,tensor_repr));
 
   // ==> Core of the programm here <==
