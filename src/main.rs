@@ -15,7 +15,7 @@ struct TensorNetwork<'a> {
   legs_dim: &'a Vec<Dimension>,
   cpu: Dimension,
   mem: Dimension,
-  contracted: usize,
+  id: usize,
   parent: usize,
   tensors: Vec<usize>
 }
@@ -27,7 +27,7 @@ impl<'a> TensorNetwork<'a> {
       legs_dim,
       cpu: 0,
       mem: 0,
-      contracted: 0,
+      id: 0,
       parent: 0,
       tensors,
     };
@@ -86,8 +86,8 @@ impl<'a> TensorNetwork<'a> {
       legs_dim: self.legs_dim,
       cpu,
       mem: std::cmp::max(self.mem,mem), // mem is an upper bond for whole contraction.
-      contracted: self.contracted | legs,
-      parent: self.contracted,
+      id: self.id | legs,
+      parent: self.id,
       tensors: child_tensors,
     })
   }
@@ -111,27 +111,20 @@ fn greedy_search(legs_dim: &Vec<Dimension>, tensor_repr: Vec<usize>)  -> (Vec<us
   let max_tn = (1<<(xor.count_zeros() - xor.leading_zeros())) - 1;  // 2^number of closed legs - 1
   let mut tn = TensorNetwork::new(legs_dim,tensor_repr);
   let mut sequence_repr = vec![0];
-  while tn.contracted < max_tn {
+  while tn.id < max_tn {
     tn = tn.generate_children().iter().min_by_key(|&c| c.cpu).unwrap().clone();
-    sequence_repr.push(tn.contracted);
+    sequence_repr.push(tn.id);
   }
   (sequence_repr,tn)
-  }
+}
 
 /// Take tensors represented as usize integers, with bit i=1 => tensor has leg i.
 /// Legs must be sorted: first every legs to contract in the TN, then open legs.
 fn exhaustive_search(legs_dim: &Vec<Dimension>, tensor_repr: Vec<usize>)  -> (Vec<usize>,TensorNetwork) {
-// TODO use maps instad of vector: map_vec[popcount(i)][i] = tn
-// store only the small number of computed points
-// Q: inline greedy cpu and greedy memory to start filling the map?
-// Q: also launch random walks? => most of them will be shitty. Avoid.
-// need to loop on each map:
-// for i in 0..n_legs { for v in map_vec[i] { v.generate_children() } }
-// note that with a map, contracted can be u128 and up to 128 legs could be reached.
 
   // first execute greedy search as reasonable upper bound. Do not explore path more expensive than greedy result.
-  let greedy = greedy_search(legs_dim, tensor_repr.clone());
-  println!("greedy result: {:?}",greedy);
+  let mut best = greedy_search(legs_dim, tensor_repr.clone()).1;
+  println!("greedy result: {:?}", best);
 
   // initialize suff
   let xor = tensor_repr.iter().fold(0, |xor, t| xor^t);
@@ -140,21 +133,25 @@ fn exhaustive_search(legs_dim: &Vec<Dimension>, tensor_repr: Vec<usize>)  -> (Ve
   let mut generation_maps = vec![HashMap::new(); n_c];  // put fully contracted outside map (access without hash cost)
   generation_maps[0].insert(0,TensorNetwork::new(legs_dim,tensor_repr));
 
+  // first execute greedy search as reasonable upper bound. Do not explore path more expensive than greedy result.
+  let mut best = greedy_search(legs_dim, tensor_repr.clone()).1;
+  println!("greedy result: {:?}",best);
+
   // ==> Core of the programm here <==
-  let mut best = greedy.1.clone();
-  //let mut count = 0;
   for generation in 0..n_c {
     let (current_generation, next_generations) = generation_maps[generation..].split_first_mut().unwrap();
     for parent in current_generation.values() { // best.cpu may change, cannot filter iter
       if parent.cpu < best.cpu {
         for child in parent.generate_children() {  // best.cpu may change, cannot filter iter
           if child.cpu < best.cpu {  // bad children loose their place
-            let child_generation = child.contracted.count_ones() as usize;
+            let child_generation = child.id.count_ones() as usize;
             if child_generation == n_c {
               best = child.clone();
             } else {
-              match next_generations[child_generation-generation-1].entry(child.contracted) {
-                Entry::Occupied(mut entry) => if child.cpu < entry.get().cpu { entry.insert(child.clone()); }, // keep current if better than child
+              match next_generations[child_generation-generation-1].entry(child.id) {
+                Entry::Occupied(mut entry) => if child.cpu < entry.get().cpu {
+                  entry.insert(child.clone()); // keep current if better than child
+                },
                 Entry::Vacant(entry) => { entry.insert(child.clone()); }
               }
             }
@@ -163,8 +160,6 @@ fn exhaustive_search(legs_dim: &Vec<Dimension>, tensor_repr: Vec<usize>)  -> (Ve
       }
     }
   }
-  //println!("number of computed tn: {}",tn_vec.iter().filter(|tn| tn.cpu<greedy.1).count());
-  //println!("count: {}",count);
 
   // return representation of contracted leg sequence as result
   let mut sequence_repr = vec![max_tn,best.parent];
