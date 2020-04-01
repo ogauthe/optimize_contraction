@@ -3,6 +3,7 @@ use std::collections::{HashMap,hash_map::Entry};
 use fnv::FnvHashMap;
 
 type Dimension = u64;
+type BinaryTensor = u64;
 
 #[derive(Debug, Clone, serde::Deserialize)]
 struct AbstractTensor { // convenient struct to read json input file
@@ -19,14 +20,14 @@ struct TensorNetwork<'a> {
   legs_dim: &'a Vec<Dimension>,   // define a binary representation for TN legs
   cpu: Dimension,     // cpu cost to reach this TN (sum of all past steps)
   mem: Dimension,     // upper bound for needed memory to reach this TN (assume copies at each contraction)
-  id: usize,          // binary representation of contracted legs: bit i is 1 if leg i has been contracted
-  parent: usize,      // id of parent TN, initial TN (id 0) is its own parent
-  tensors: Vec<usize> // binary representation of tensors in TN
+  id: BinaryTensor,          // binary representation of contracted legs: bit i is 1 if leg i has been contracted
+  parent: BinaryTensor,      // id of parent TN, initial TN (id 0) is its own parent
+  tensors: Vec<BinaryTensor> // binary representation of tensors in TN
 }
 
 
 impl<'a> TensorNetwork<'a> {
-  fn new(legs_dim: &'a Vec<Dimension>, tensors: Vec<usize>)  -> TensorNetwork<'a> {
+  fn new(legs_dim: &'a Vec<Dimension>, tensors: Vec<BinaryTensor>)  -> TensorNetwork<'a> {
     let mut tn = TensorNetwork {
       legs_dim,
       cpu: 0,
@@ -39,7 +40,7 @@ impl<'a> TensorNetwork<'a> {
     tn
   }
 
-  fn measure(&self, tensor: usize) -> Dimension {
+  fn measure(&self, tensor: BinaryTensor) -> Dimension {
     let mut s:Dimension = 1;
     for (i, &d) in self.legs_dim.iter().enumerate() {
       if (tensor >> i)%2 != 0 {
@@ -49,7 +50,7 @@ impl<'a> TensorNetwork<'a> {
     s
   }
 
-  fn checked_measure(&self, tensor: usize) -> Option<Dimension> {  // deal with high risk of overflow
+  fn checked_measure(&self, tensor: BinaryTensor) -> Option<Dimension> {  // deal with high risk of overflow
     let mut s:Dimension = 1;                               // other solution: Dimension -> f64
     for (i, &d) in self.legs_dim.iter().enumerate() {
       if (tensor >> i)%2 != 0 {
@@ -110,7 +111,7 @@ impl<'a> TensorNetwork<'a> {
 }
 
 
-fn greedy_search(legs_dim: &Vec<Dimension>, tensor_repr: Vec<usize>)  -> (Vec<usize>,TensorNetwork) {
+fn greedy_search(legs_dim: &Vec<Dimension>, tensor_repr: Vec<BinaryTensor>)  -> (Vec<BinaryTensor>,TensorNetwork) {
   let xor = tensor_repr.iter().fold(0, |xor, t| xor^t);
   let max_tn = (1<<(xor.count_zeros() - xor.leading_zeros())) - 1;  // 2^number of closed legs - 1
   let mut tn = TensorNetwork::new(legs_dim,tensor_repr);
@@ -122,7 +123,7 @@ fn greedy_search(legs_dim: &Vec<Dimension>, tensor_repr: Vec<usize>)  -> (Vec<us
   (sequence_repr,tn)
 }
 
-fn exhaustive_search(legs_dim: &Vec<Dimension>, tensor_repr: Vec<usize>)  -> (Vec<usize>,TensorNetwork) {
+fn exhaustive_search(legs_dim: &Vec<Dimension>, tensor_repr: Vec<BinaryTensor>)  -> (Vec<BinaryTensor>,TensorNetwork) {
 
   // first execute greedy search as reasonable upper bound.
   let mut best = greedy_search(legs_dim, tensor_repr.clone()).1;
@@ -181,8 +182,8 @@ fn tensors_from_input(input: &str) -> Vec<AbstractTensor> {
   tensors
 }
 
-fn represent_usize(tensors: &Vec<AbstractTensor>) -> (Vec<i8>, Vec<Dimension>, Vec<usize>) {
-  let mut legs_map = HashMap::new();
+fn represent_binary(tensors: &Vec<AbstractTensor>) -> (Vec<i8>, Vec<Dimension>, Vec<BinaryTensor>) {
+  let mut legs_map = FnvHashMap::default();
   for t in tensors {
     for (i,&l) in t.legs.iter().enumerate() {
       if t.legs.iter().filter(|&&l2| l2 == l).count() > 1 {
@@ -212,7 +213,7 @@ fn represent_usize(tensors: &Vec<AbstractTensor>) -> (Vec<i8>, Vec<Dimension>, V
   (legs_indices,legs_dim,tensor_repr)
 }
 
-fn sequence_from_repr(legs_indices: &Vec<i8>, sequence_repr: Vec<usize>) -> Vec<Vec<i8>> {
+fn sequence_from_repr(legs_indices: &Vec<i8>, sequence_repr: Vec<BinaryTensor>) -> Vec<Vec<i8>> {
   let mut sequence = Vec::new();
   for i in 1..sequence_repr.len() {
     let mut legs = Vec::new();
@@ -267,7 +268,7 @@ fn main() {
   for t in &tensors {
     println!("{:?}",t);
   }
-  let (legs_indices, legs_dim, tensor_repr) = represent_usize(&tensors);
+  let (legs_indices, legs_dim, tensor_repr) = represent_binary(&tensors);
 
   let (sequence_repr,best_tn) = exhaustive_search(&legs_dim, tensor_repr);
   let sequence = sequence_from_repr(&legs_indices, sequence_repr);
