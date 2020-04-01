@@ -137,18 +137,18 @@ fn exhaustive_search(legs_dim: &Vec<Dimension>, tensor_repr: Vec<usize>)  -> (Ve
   let xor = tensor_repr.iter().fold(0, |xor, t| xor^t);
   let n_c = (xor.count_zeros() - xor.leading_zeros()) as usize;
   let max_tn = (1<<n_c) - 1;  // 2^number of closed legs - 1
-  let mut generation_maps = vec![HashMap::new(); n_c];  // put fully id outside map
-  generation_maps[0].insert(0,TensorNetwork::new(legs_dim,tensor_repr));  // to avoid evaluting hash function to get best cpu
+  let mut generation_maps = vec![HashMap::new(); n_c];  // put fully contracted outside map (access without hash cost)
+  generation_maps[0].insert(0,TensorNetwork::new(legs_dim,tensor_repr));
 
   // ==> Core of the programm here <==
   let mut best = greedy.1.clone();
   //let mut count = 0;
   for generation in 0..n_c {
     let (current_generation, next_generations) = generation_maps[generation..].split_first_mut().unwrap();
-      for (_,parent) in current_generation { // best.cpu may change, cannot filter iter
+    for parent in current_generation.values() { // best.cpu may change, cannot filter iter
       if parent.cpu < best.cpu {
-        for child in parent.generate_children() {
-          if child.cpu < best.cpu { // // do not consider bad children
+        for child in parent.generate_children() {  // best.cpu may change, cannot filter iter
+          if child.cpu < best.cpu {  // bad children loose their place
             let child_generation = child.contracted.count_ones() as usize;
             if child_generation == n_c {
               best = child.clone();
