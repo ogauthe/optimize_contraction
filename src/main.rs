@@ -41,27 +41,25 @@ impl<'a> TensorNetwork<'a> {
   }
 
   fn measure(&self, tensor: BinaryTensor) -> Dimension {
-    let mut s:Dimension = 1;
-    for (i, &d) in self.legs_dim.iter().enumerate() {
-      if (tensor >> i)%2 != 0 {
-        s *= d;
-      }
-    }
-    s
+    //self.legs_dim.iter().enumerate().fold(1, |s, (i,d)| if (tensor >> i)%2 != 0 {s*d} else {s})
+    self.legs_dim.iter().enumerate().filter(|(i,_)| (tensor>>i)%2 != 0).map(|(_,d)| d).product()
   }
 
   fn checked_measure(&self, tensor: BinaryTensor) -> Option<Dimension> {  // deal with high risk of overflow
-    let mut s:Dimension = 1;                               // other solution: Dimension -> f64
-    for (i, &d) in self.legs_dim.iter().enumerate() {
-      if (tensor >> i)%2 != 0 {
-        s = s.checked_mul(d)?;
-      }
+    //self.legs_dim.iter().enumerate().fold(Some(1), |Some(s):Option<Dimension>, (i,&d)| if (tensor >> i)%2 != 0 {Some(s.checked_mul(d)?)} else {Some(s)})
+    //self.legs_dim.iter().enumerate().filter(|(i,_)| (tensor>>i)%2 != 0).map(|(_,d)| d).fold(Some(1),|s:Option<Dimension>,&d| s.map_or(None,|s1| Some(s1.checked_mul(d)?)))
+    self.legs_dim.iter().enumerate().filter(|(i,_)| (tensor>>i)%2 != 0).map(|(_,d)| d).try_fold(1 as Dimension, |s, &d| s.checked_mul(d))
+    //let mut s:Dimension = 1;                               // other solution: Dimension -> f64
+    //for (i, &d) in self.legs_dim.iter().enumerate() {
+      //if (tensor >> i)%2 != 0 {
+       // s = s.checked_mul(d)?;
+      //}
       /*else {
         if tensor >> i == 0 {
           break;
         }
       }*/
-    }
+    //}
     /*let mut t = tensor;
     let mut i = 0;
     while t != 0 {
@@ -69,7 +67,7 @@ impl<'a> TensorNetwork<'a> {
       i += 1
       t >>= 1;
     }*/
-    Some(s)
+    //Some(s)
   }
 
   fn contract_tensors(&self, i:usize, j:usize) -> Option<TensorNetwork<'a>> { // compute TN child obtained by contraction
