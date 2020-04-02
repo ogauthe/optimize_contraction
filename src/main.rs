@@ -110,8 +110,10 @@ impl<'a> TensorNetwork<'a> {
 
 
 fn greedy_search(legs_dim: &Vec<Dimension>, tensor_repr: Vec<BinaryTensor>)  -> (Vec<BinaryTensor>,TensorNetwork) {
-  let xor = tensor_repr.iter().fold(0, |xor, t| xor^t);
-  let max_tn = (1<<(xor.count_zeros() - xor.leading_zeros())) - 1;  // 2^number of closed legs - 1
+  let max_tn = {
+    let xor = tensor_repr.iter().fold(0, |xor, t| xor^t);
+    (1<<(xor.count_zeros() - xor.leading_zeros())) - 1  // 2^number of closed legs - 1
+  };
   let mut tn = TensorNetwork::new(legs_dim,tensor_repr);
   let mut sequence_repr = vec![0];
   while tn.id < max_tn {
@@ -128,8 +130,10 @@ fn exhaustive_search(legs_dim: &Vec<Dimension>, tensor_repr: Vec<BinaryTensor>) 
   println!("\ngreedy result: {:?}", best);
 
   // initialize suff
-  let xor = tensor_repr.iter().fold(0, |xor, t| xor^t);
-  let n_c = (xor.count_zeros() - xor.leading_zeros()) as usize;
+  let n_c = {
+    let xor = tensor_repr.iter().fold(0, |xor, t| xor^t);
+    (xor.count_zeros() - xor.leading_zeros()) as usize
+  };
   let mut generation_maps = vec![FnvHashMap::default(); n_c];  // put fully contracted outside map (access without hash cost)
   generation_maps[0].insert(0,TensorNetwork::new(legs_dim,tensor_repr));
 
