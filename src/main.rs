@@ -198,8 +198,8 @@ fn represent_binary(tensors: &Vec<AbstractTensor>) -> (Vec<i8>, Vec<Dimension>, 
       }
     }
   }
-  if legs_map.keys().len() > 64 {
-    panic!("Cannot consider more than 64 legs");
+  if legs_map.keys().len() > (0 as BinaryTensor).count_zeros() as usize {
+    panic!("Cannot consider more than {} legs",(0 as BinaryTensor).count_zeros());
   }
   let mut legs_indices: Vec<i8> = legs_map.keys().map(|&l| l).collect();
   // expect l<0 for free legs and l>0 for legs to contract (not mandatory)
