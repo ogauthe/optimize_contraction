@@ -183,9 +183,15 @@ fn tensors_from_input(input: &str) -> Vec<AbstractTensor> {
 fn represent_binary(tensors: &Vec<AbstractTensor>) -> (Vec<i8>, Vec<Dimension>, Vec<BinaryTensor>) {
   let mut legs_map = FnvHashMap::default();
   for t in tensors {
+    if t.legs.len() != t.shape.len() {
+      panic!("Tensor {} shape and dimension have different lengths",t.name);
+    }
     for (i,&l) in t.legs.iter().enumerate() {
+      if t.shape[i] < 2 {
+        panic!("Tensor {} has leg {} with forbidden dimension {}.",t.name,i,t.shape[i]);
+      }
       if t.legs.iter().filter(|&&l2| l2 == l).count() > 1 {
-        panic!("A vector has twice the same leg. Trace is not allowed.");
+        panic!("Tensor {} has twice the same leg. Trace is not allowed.", t.name);
       }
       match legs_map.entry(l) {
         Entry::Vacant(entry) => { entry.insert((true,t.shape[i])); }
@@ -201,6 +207,7 @@ fn represent_binary(tensors: &Vec<AbstractTensor>) -> (Vec<i8>, Vec<Dimension>, 
   if legs_map.keys().len() > (0 as BinaryTensor).count_zeros() as usize {
     panic!("Cannot consider more than {} legs",(0 as BinaryTensor).count_zeros());
   }
+
   let mut legs_indices: Vec<i8> = legs_map.keys().map(|&l| l).collect();
   // expect l<0 for free legs and l>0 for legs to contract (not mandatory)
   legs_indices.sort_by_key(|l| (legs_map[l].0, l.abs()));
@@ -212,7 +219,28 @@ fn represent_binary(tensors: &Vec<AbstractTensor>) -> (Vec<i8>, Vec<Dimension>, 
       tensor_repr[i] |= 1 << legs_indices.iter().position(|&l| lt==l).unwrap();
     }
   }
+
+  if !is_connex(&tensor_repr) {
+    panic!("Tensor network is not connex.");
+  }
+
   (legs_indices,legs_dim,tensor_repr)
+}
+
+fn is_connex(tensor_repr: &Vec<BinaryTensor>) -> bool {
+  let mut to_reach = tensor_repr.clone();
+  let mut to_visit = vec![to_reach.pop().unwrap()];
+  while let Some(t) = to_visit.pop() {
+    for i in (0..to_reach.len()).rev() {
+      if t & to_reach[i] != 0 {
+        to_visit.push(to_reach.remove(i));
+        if to_reach.is_empty() {
+          return true;
+        }
+      }
+    }
+  }
+  false
 }
 
 fn sequence_from_repr(legs_indices: &Vec<i8>, sequence_repr: Vec<BinaryTensor>) -> Vec<Vec<i8>> {
@@ -271,6 +299,7 @@ fn main() {
     println!("{:?}",t);
   }
   let (legs_indices, legs_dim, tensor_repr) = represent_binary(&tensors);
+
 
   let (sequence_repr,best_tn) = exhaustive_search(&legs_dim, tensor_repr);
   let sequence = sequence_from_repr(&legs_indices, sequence_repr);

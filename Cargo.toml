@@ -1,6 +1,6 @@
 [package]
 name = "optimize_contraction"
-version = "1.5.3"
+version = "1.5.4"
 authors = ["Olivier Gauthé <olivier.gauthe@irsamc.ups-tlse.fr>"]
 edition = "2018"
 
