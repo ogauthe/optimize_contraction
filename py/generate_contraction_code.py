@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 import numpy as np
 import sympy as sp
+import re
+
+tofill = '...'
+regex = re.compile('[^a-zA-Z0-9]')
 
 class AbstractTensor(object):
   """
@@ -40,6 +44,9 @@ class AbstractTensor(object):
 
   def __repr__(self):
     return self._name
+
+  def raw_name(self):
+    return regex.sub('',self._name)
 
 def find_common_legs(A,B):
   return tuple(set(A.legs).intersection(B.legs))
@@ -108,6 +115,7 @@ class TensorNetwork(object):
   def __repr__(self):
     return ','.join([T.name for T in self._tensors])
 
+
   def contract_legs(self,legs):
     tens = []
     i = self._ntens - 1
@@ -122,6 +130,11 @@ class TensorNetwork(object):
     self._cpu += cpu
     self._mem = max(self._mem,mem)
     self._ntens -= 1
+    print(f'{tens[0].raw_name()} = {tens[0].raw_name()}.tranpose({tofill}).reshape({tofill})')
+    print(f'{tens[1].raw_name()} = {tens[1].raw_name()}.tranpose({tofill}).reshape({tofill})')
+    print(f'{contracted.raw_name()} = np.tensordot({tens[0].raw_name()},{tens[1].raw_name()},({tofill}),({tofill}))')
+    print(f'del {tens[0].raw_name()}, {tens[1].raw_name()}')
+    print(f'{contracted.raw_name()} = {contracted.raw_name()}.reshape({tofill})')
 
 chi = 20
 D = 3
