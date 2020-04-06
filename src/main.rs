@@ -130,7 +130,9 @@ fn greedy_search(legs_dim: &Vec<Dimension>, tensor_repr: Vec<BinaryTensor>)  -> 
     (1<<(xor.count_zeros() - xor.leading_zeros())) - 1  // 2^number of closed legs - 1
   };
   let mut tn = TensorNetwork::new(legs_dim,tensor_repr);
-  tn.allows_outer = vec![false;tn.tensors.len()];  // do not consider outer product in greedy (cannot become true later)
+  for b in tn.allows_outer.as_mut_slice() {
+    *b = false;   // do not consider outer product in greedy (cannot become true later)
+  }
   let mut sequence_repr = vec![0];
   while tn.id < max_tn {
     tn = tn.generate_children().iter().min_by_key(|&c| c.cpu).unwrap().clone();
