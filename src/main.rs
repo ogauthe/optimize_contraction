@@ -74,9 +74,7 @@ impl<'a> TensorNetwork<'a> {
     Some(s)
   }
 
-  fn contract_tensors(&self, i0:usize, j0:usize) -> Option<TensorNetwork<'a>> { // compute TN child obtained by contraction of ti and tj
-    let i = std::cmp::min(i0,j0);
-    let j = std::cmp::max(i0,j0);
+  fn contract_tensors(&self, i:usize, j:usize) -> Option<TensorNetwork<'a>> { // compute TN child obtained by contraction of ti and tj
     let ti = self.tensors[i];                                                 // of tensors i and j. Returns None if no common
     let tj = self.tensors[j];                                                 // leg or cpu overflow.
     let legs = ti & tj;
@@ -86,13 +84,9 @@ impl<'a> TensorNetwork<'a> {
     let ti_size = self.measure(ti); // tensors in self.tensors are checked at contruction
     let tj_size = self.measure(tj);
     let legs_sizep3 = self.measure(legs).saturating_pow(3);  // measure(legs) < measure(ti|tj)
-    let mut child_tensors = self.tensors.clone();
-    child_tensors.remove(j);
-    child_tensors.remove(i);
+    let mut child_tensors:Vec<BinaryTensor> = self.tensors.iter().enumerate().filter(|&(k,_)| k != i && k != j).map(|(_,&t)| t).collect();
     child_tensors.push(ti_dot_tj);
-    let mut child_allow = self.allows_outer.clone();
-    child_allow.remove(j);
-    child_allow.remove(i);
+    let mut child_allow:Vec<bool> = self.allows_outer.iter().enumerate().filter(|&(k,_)| k != i && k != j).map(|(_,&b)| b).collect();
     let allow_tij = ((ti_dot_tj & tj == 0) && legs_sizep3 > ti_size) || ((ti_dot_tj & ti == 0) && legs_sizep3 > tj_size);
     child_allow.push(allow_tij);
     // Assume copies of both ti and tj are needed in order to arange legs for BLAS (upper bound)
