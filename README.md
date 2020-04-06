@@ -6,9 +6,13 @@ Exhaustive searche algorithm to find the best contraction sequence of a tensor n
 # Installation
 If you have not already installed Rust, follow the instructions at https://www.rust-lang.org/tools/install.
 Clone the repository with
-`git clone https://github.com/gauthe/optimize_contraction.git`
+```
+git clone https://github.com/gauthe/optimize_contraction.git
+```
 compile with
-`cargo build --release`
+```
+cargo build --release
+```
 the optimized executable will be `current_dir/target/release/optimize_contraction`.
 
 # Usage
@@ -22,5 +26,5 @@ The program checks that:
 The program prints the best contraction sequence as well as its CPU cost and an upper bound for the memory in the standard output.
 
 # References
-Pfeiffer et al., Phys. Rev. E 90, 033315, https://journals.aps.org/pre/abstract/10.1103/PhysRevE.90.033315
+Pfeiffer et al., Phys. Rev. E 90, 033315, https://journals.aps.org/pre/abstract/10.1103/PhysRevE.90.033315  
 see also https://github.com/frankschindler/OptimizedTensorContraction/
