@@ -114,7 +114,7 @@ impl<'a> TensorNetwork<'a> {
   fn generate_children(&self) -> Vec<TensorNetwork<'a>> {
     for (k,&tk) in self.tensors.iter().enumerate().filter(|&(k,_)| self.allows_outer[k]) {
       if self.tensors.iter().enumerate().filter(|&(i,ti)| i != k && (ti^tk)&ti == 0).count() > 1 {
-        println!("outer product (not implemented) might be necessary to contract TN {}",self.id)
+        println!("Warning: outer product (not implemented) may be necessary to contract TN {}",self.id)
       }
     }
     let mut children = Vec::new();
