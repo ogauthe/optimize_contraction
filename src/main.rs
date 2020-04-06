@@ -20,9 +20,10 @@ struct TensorNetwork<'a> {
   legs_dim: &'a Vec<Dimension>,   // define a binary representation for TN legs
   cpu: Dimension,     // cpu cost to reach this TN (sum of all past steps)
   mem: Dimension,     // upper bound for needed memory to reach this TN (assume copies at each contraction)
-  id: BinaryTensor,          // binary representation of contracted legs: bit i is 1 if leg i has been contracted
-  parent: BinaryTensor,      // id of parent TN, initial TN (id 0) is its own parent
-  tensors: Vec<BinaryTensor> // binary representation of tensors in TN
+  id: BinaryTensor,           // binary representation of contracted legs: bit i is 1 if leg i has been contracted
+  parent: BinaryTensor,       // id of parent TN, initial TN (id 0) is its own parent
+  tensors: Vec<BinaryTensor>, // binary representation of tensors in TN
+  allows_outer: Vec<bool>     // whether tensor i construction allows outer product
 }
 
 
@@ -34,6 +35,7 @@ impl<'a> TensorNetwork<'a> {
       mem: 0,
       id: 0,
       parent: 0,
+      allows_outer: vec![true; tensors.len()],
       tensors,
     };
     tn.mem = tn.tensors.iter().map(|&t| tn.checked_measure(t).unwrap()).sum();
@@ -72,32 +74,49 @@ impl<'a> TensorNetwork<'a> {
     Some(s)
   }
 
-  fn contract_tensors(&self, i:usize, j:usize) -> Option<TensorNetwork<'a>> { // compute TN child obtained by contraction
+  fn contract_tensors(&self, i0:usize, j0:usize) -> Option<TensorNetwork<'a>> { // compute TN child obtained by contraction of ti and tj
+    let i = std::cmp::min(i0,j0);
+    let j = std::cmp::max(i0,j0);
     let ti = self.tensors[i];                                                 // of tensors i and j. Returns None if no common
     let tj = self.tensors[j];                                                 // leg or cpu overflow.
     let legs = ti & tj;
-    if legs == 0 { return None; }
+    if legs == 0 { return None; }  // do not consider outer product
     let cpu = self.cpu.checked_add(self.checked_measure(ti|tj)?)?;  // test overflow the soonest possible
+    let ti_dot_tj = ti^tj;  // measure(ti^tj) < measure(ti|tj), which has been checked
+    let ti_size = self.measure(ti); // tensors in self.tensors are checked at contruction
+    let tj_size = self.measure(tj);
+    let legs_sizep3 = self.measure(legs).saturating_pow(3);  // measure(legs) < measure(ti|tj)
     let mut child_tensors = self.tensors.clone();
-    child_tensors.remove(std::cmp::max(i,j));
-    child_tensors.remove(std::cmp::min(i,j));
-    let ti_dot_tj = ti^tj;
+    child_tensors.remove(j);
+    child_tensors.remove(i);
     child_tensors.push(ti_dot_tj);
+    let mut child_allow = self.allows_outer.clone();
+    child_allow.remove(j);
+    child_allow.remove(i);
+    let allow_tij = ((ti_dot_tj & tj == 0) && legs_sizep3 > ti_size) || ((ti_dot_tj & ti == 0) && legs_sizep3 > tj_size);
+    child_allow.push(allow_tij);
     // Assume copies of both ti and tj are needed in order to arange legs for BLAS (upper bound)
     // Assume ti and tj are destroyed after copy, and their copies are destroyed after contraction
     // then max memory is sum(t_mem, including i and j) + max_mem(ti,tj,ti.tj)
-    let mem = self.tensors.iter().map(|&t| self.measure(t)).sum::<Dimension>() + std::cmp::max(self.measure(ti),std::cmp::max(self.measure(tj),self.measure(ti_dot_tj)));  // cpu cost is always > memory cost, hence no overflow here
+    let mem = self.tensors.iter().map(|&t| self.measure(t)).sum::<Dimension>() + std::cmp::max(ti_size,std::cmp::max(tj_size,self.measure(ti_dot_tj)));  // cpu cost is always > memory cost, hence no overflow here
     Some(TensorNetwork {
       legs_dim: self.legs_dim,
       cpu,
       mem: std::cmp::max(self.mem,mem), // mem is an upper bond for whole contraction.
-      id: self.id | legs,
       parent: self.id,
+      id: self.id | legs,
       tensors: child_tensors,
+      allows_outer: child_allow,
     })
   }
 
+
   fn generate_children(&self) -> Vec<TensorNetwork<'a>> {
+    for (k,&tk) in self.tensors.iter().enumerate().filter(|&(k,_)| self.allows_outer[k]) {
+      if self.tensors.iter().enumerate().filter(|&(i,ti)| i != k && (ti^tk)&ti == 0).count() > 1 {
+        println!("outer product (not implemented) might be necessary to contract TN {}",self.id)
+      }
+    }
     let mut children = Vec::new();
     for i in 0..self.tensors.len() {
       for j in i+1..self.tensors.len() {
@@ -117,6 +136,7 @@ fn greedy_search(legs_dim: &Vec<Dimension>, tensor_repr: Vec<BinaryTensor>)  -> 
     (1<<(xor.count_zeros() - xor.leading_zeros())) - 1  // 2^number of closed legs - 1
   };
   let mut tn = TensorNetwork::new(legs_dim,tensor_repr);
+  tn.allows_outer = vec![false;tn.tensors.len()];  // do not consider outer product in greedy (cannot become true later)
   let mut sequence_repr = vec![0];
   while tn.id < max_tn {
     tn = tn.generate_children().iter().min_by_key(|&c| c.cpu).unwrap().clone();
