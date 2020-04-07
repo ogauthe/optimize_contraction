@@ -177,7 +177,7 @@ def transpose_reshape(A,axA,legsA):
   sh = np.prod([A.shape[k] for k in axA]), np.prod([A.shape[k] for k in legsA])
   if orderA == tuple(range(len(orderA))):  # no transpose
     if A.ndim > 2:
-      return f'{name} = np.ascontiguousarray({name}.reshape{sh})\n'
+      return f'{name} = {name}.reshape{sh}\n'
     return ''   # (0,) or (0,1): nothing
   if A.ndim == 2:
     return f'{name} = {name}.T\n'
