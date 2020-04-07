@@ -217,6 +217,14 @@ tn = TensorNetwork(C,T1,T2,E)
 for legs in sequence:
   tn.contract_and_generate_code(legs)
 
+if tn.ntens != 1:
+  raise ValueError('Final number of tensors is not 1')
+final = tn.tensors[0]
+print(f'# exit tensor: {final} with name {final.raw_name()} and legs {final.legs}')
+order = tuple(np.argsort(np.abs(final.legs)))
+if order != tuple(range(final.ndim)):
+  print(f'# reorder with: {final.raw_name()} = {final.raw_name()}.tranpose{order}.copy()')
+
 print(f'\n{tn}', ': cpu = ', tn.cpu, ', mem = ', tn.mem, sep='')
 
 
