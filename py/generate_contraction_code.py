@@ -184,6 +184,18 @@ def transpose_reshape(A,axA,legsA):
   return f'{name} = {name}.tranpose{orderA}.reshape{sh}\n'
 
 
+chif = sp.symbols('chi')
+big_subs = 10000000000000000000000000
+def formal_max(a,b):
+  if isinstance(a, tuple(sp.core.all_classes)):
+    if isinstance(b, tuple(sp.core.all_classes)):
+      numeric = [a.subs(chif,big_subs), b.subs(chif,big_subs)]
+      return [a,b][numeric.index(max(numeric))]   # dirty but efficient
+    return a
+  if isinstance(b, tuple(sp.core.all_classes)):
+    return b
+  return max(a,b)
+
 chi = 20
 D = 3
 #   C-0-T- -1
