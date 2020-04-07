@@ -158,15 +158,10 @@ class TensorNetwork(object):
       cpu *= A.shape[i]  # + loop on every contracted leg
     mem = max(A.size,B.size,AB.size)
 
-
     # 4. generate code
-    orderA = tuple(axA+legsA)
-    if orderA != tuple(range(A.ndim)):
-      print(f'{A.raw_name()} = {A.raw_name()}.tranpose{tuple(axA+legsA)}')#.reshape({})')
-    orderB = tuple(legsB+axB)
-    if orderB != tuple(range(B.ndim)):
-      print(f'{B.raw_name()} = {B.raw_name()}.tranpose{tuple(legsB+axB)}')#.reshape({tofill})')
-    print(f'{AB.raw_name()} = np.tensordot({A.raw_name()},{B.raw_name()},({tuple(range(len(axA),len(axA)+len(legs)))},{tuple(range(len(legs)))}))')
+    print(transpose_reshape(A,axA,legsA), end='')
+    print(transpose_reshape(B,legsB,axB), end='')
+    print(f'{AB.raw_name()} = np.dot({A.raw_name()},{B.raw_name()})'+ (AB.ndim > 1)*f'.reshape{tuple(ABshape)}')
     print(f'del {A.raw_name()}, {B.raw_name()}')
     #print(f'{contracted.raw_name()} = {contracted.raw_name()}.reshape({tofill})')
     self._tensors.append(AB)
@@ -174,6 +169,20 @@ class TensorNetwork(object):
     self._cpu += cpu
     self._mem = max(self._mem,mem)
     self._ntens -= 1
+
+
+def transpose_reshape(A,axA,legsA):
+  orderA = tuple(axA + legsA)
+  name = A.raw_name()
+  sh = np.prod([A.shape[k] for k in axA]), np.prod([A.shape[k] for k in legsA])
+  if orderA == tuple(range(len(orderA))):  # no transpose
+    if A.ndim > 2:
+      return f'{name} = np.ascontiguousarray({name}.reshape{sh})\n'
+    return ''   # (0,) or (0,1): nothing
+  if A.ndim == 2:
+    return f'{name} = {name}.T\n'
+  return f'{name} = {name}.tranpose{orderA}.reshape{sh}\n'
+
 
 chi = 20
 D = 3
@@ -196,6 +205,7 @@ tn = TensorNetwork(C,T1,T2,E)
 for legs in sequence:
   tn.contract_and_generate_code(legs)
 
-print(tn, ': cpu = ', tn.cpu, ', mem = ', tn.mem, sep='')
+print(f'\n{tn}', ': cpu = ', tn.cpu, ', mem = ', tn.mem, sep='')
+
 
 
