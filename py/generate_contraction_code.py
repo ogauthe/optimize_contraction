@@ -124,17 +124,56 @@ class TensorNetwork(object):
       if legs[0] in self._tensors[i].legs:
         tens.append(self.tensors.pop(i))
       i -= 1
-    contracted, (cpu,mem) = abstract_contraction(*tens,legs=legs)
+    contracted, (cpu,mem) = abstract_contraction(tens[0],tens[1],legs=legs)
     self._tensors.append(contracted)
     mem += mem0
     self._cpu += cpu
     self._mem = max(self._mem,mem)
     self._ntens -= 1
-    print(f'{tens[0].raw_name()} = {tens[0].raw_name()}.tranpose({tofill}).reshape({tofill})')
-    print(f'{tens[1].raw_name()} = {tens[1].raw_name()}.tranpose({tofill}).reshape({tofill})')
-    print(f'{contracted.raw_name()} = np.tensordot({tens[0].raw_name()},{tens[1].raw_name()},({tofill}),({tofill}))')
-    print(f'del {tens[0].raw_name()}, {tens[1].raw_name()}')
-    print(f'{contracted.raw_name()} = {contracted.raw_name()}.reshape({tofill})')
+
+  def contract_and_generate_code(self,legs):
+    # 1. find tensors A and B that have legs to contract
+    tens = []
+    i = self._ntens - 1
+    mem0 = sum(T.size for T in self._tensors)
+    while len(tens) != 2:
+      if legs[0] in self._tensors[i].legs:
+        tens.append(self.tensors.pop(i))
+      i -= 1
+
+    # 2. find legs indices in A and B
+    A,B = tens
+    legsA = [A.legs.index(l) for l in legs]  # indices of legs to contract in A
+    legsB = [B.legs.index(l) for l in legs]  # indices of legs to contract in B
+    axA = [k for k in range(A.ndim) if k not in legsA]    # indices of A other legs
+    axB = [k for k in range(B.ndim) if k not in legsB]    # indices of B other legs
+
+    # 3. find contracted tensor features
+    ABname = "[" + A.name + '-' + B.name + ']'
+    ABshape = [A.shape[i] for i in axA] + [B.shape[i] for i in axB]
+    ABlegs = [A.legs[i] for i in axA] + [B.legs[i] for i in axB]
+    AB = AbstractTensor(ABname,ABshape,ABlegs)
+    cpu = AB.size
+    for i in legsA:   # cpu cost = loop on returned shape
+      cpu *= A.shape[i]  # + loop on every contracted leg
+    mem = max(A.size,B.size,AB.size)
+
+
+    # 4. generate code
+    orderA = tuple(axA+legsA)
+    if orderA != tuple(range(A.ndim)):
+      print(f'{A.raw_name()} = {A.raw_name()}.tranpose{tuple(axA+legsA)}')#.reshape({})')
+    orderB = tuple(legsB+axB)
+    if orderB != tuple(range(B.ndim)):
+      print(f'{B.raw_name()} = {B.raw_name()}.tranpose{tuple(legsB+axB)}')#.reshape({tofill})')
+    print(f'{AB.raw_name()} = np.tensordot({A.raw_name()},{B.raw_name()},({tuple(range(len(axA),len(axA)+len(legs)))},{tuple(range(len(legs)))}))')
+    print(f'del {A.raw_name()}, {B.raw_name()}')
+    #print(f'{contracted.raw_name()} = {contracted.raw_name()}.reshape({tofill})')
+    self._tensors.append(AB)
+    mem += mem0
+    self._cpu += cpu
+    self._mem = max(self._mem,mem)
+    self._ntens -= 1
 
 chi = 20
 D = 3
@@ -155,7 +194,7 @@ print(f'test: symmetric CTMRG contraction scheme, chi={chi}, D={D}')
 
 tn = TensorNetwork(C,T1,T2,E)
 for legs in sequence:
-  tn.contract_legs(legs)
+  tn.contract_and_generate_code(legs)
 
 print(tn, ': cpu = ', tn.cpu, ', mem = ', tn.mem, sep='')
 
