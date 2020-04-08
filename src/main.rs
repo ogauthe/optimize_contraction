@@ -147,7 +147,7 @@ fn exhaustive_search(legs_dim: &Vec<Dimension>, tensor_repr: Vec<BinaryTensor>) 
   let mut best = greedy_search(legs_dim, tensor_repr.clone()).1;
   println!("\ngreedy result: {:?}", best);
 
-  // initialize suff
+  // initialize stuff
   let n_c = {
     let xor = tensor_repr.iter().fold(0, |xor, t| xor^t);
     (xor.count_zeros() - xor.leading_zeros()) as usize
