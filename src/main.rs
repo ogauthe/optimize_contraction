@@ -27,6 +27,20 @@ struct TensorNetwork<'a> {
 }
 
 
+impl<'a> PartialOrd for TensorNetwork<'a> {
+    fn partial_cmp(&self, other: &TensorNetwork) -> Option<std::cmp::Ordering> {
+        Some((self.cpu,self.mem).cmp(&(other.cpu,other.mem)))
+    }
+}
+
+impl<'a> PartialEq for TensorNetwork<'a> {
+    fn eq(&self, other: &Self) -> bool {
+        self.cpu == other.cpu && self.mem == other.mem
+    }
+}
+
+
+
 impl<'a> TensorNetwork<'a> {
   fn new(legs_dim: &'a Vec<Dimension>, tensors: Vec<BinaryTensor>)  -> TensorNetwork<'a> {
     let mut tn = TensorNetwork {
@@ -161,16 +175,16 @@ fn exhaustive_search(legs_dim: &Vec<Dimension>, tensor_repr: Vec<BinaryTensor>) 
   for generation in 0..n_c {
     let (current_generation, next_generations) = generation_maps[generation..].split_first_mut().unwrap();
     for parent in current_generation.values() {
-      if parent.cpu < best.cpu {    // Do not explore path already more expensive than currrent best result.
+      if *parent < best {    // Do not explore path already more expensive than currrent best result.
         for child in parent.generate_children() { // best.cpu may change, cannot filter iter
-          if child.cpu < best.cpu {  // bad children loose their turn
+          if child < best {  // bad children loose their turn
             let child_generation = child.id.count_ones() as usize;
             if child_generation == n_c {
               best = child.clone();
             } else {
               match next_generations[child_generation-generation-1].entry(child.id) { // evalutate hash function only once
                 Entry::Vacant(entry) => { entry.insert(child.clone()); },
-                Entry::Occupied(mut entry) => if child.cpu < entry.get().cpu {
+                Entry::Occupied(mut entry) => if child < *entry.get() {
                   entry.insert(child.clone());
                 }    // do nothing if current entry is better than child
               }
