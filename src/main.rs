@@ -158,7 +158,7 @@ fn greedy_search(legs_dim: &Vec<Dimension>, tensor_repr: Vec<BinaryTensor>)  -> 
 fn exhaustive_search(legs_dim: &Vec<Dimension>, tensor_repr: Vec<BinaryTensor>)  -> (Vec<BinaryTensor>,TensorNetwork) {
 
   // first execute greedy search as reasonable upper bound.
-  let mut best = greedy_search(legs_dim, tensor_repr.clone()).1;
+  let (_, mut best) = greedy_search(legs_dim, tensor_repr.clone());
   println!("\ngreedy result: {:?}", best);
 
   // initialize stuff
