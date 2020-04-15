@@ -222,19 +222,19 @@ fn represent_binary(tensors: &Vec<AbstractTensor>) -> (Vec<i8>, Vec<Dimension>, 
     if t.legs.len() != t.shape.len() {
       panic!("Tensor {} shape and dimension have different lengths",t.name);
     }
-    for (i,&l) in t.legs.iter().enumerate() {
-      if t.shape[i] < 2 {
-        panic!("Tensor {} has leg {} with forbidden dimension {}.",t.name,i,t.shape[i]);
+    for (&l,&d) in t.legs.iter().zip(t.shape.iter()) {
+      if d < 2 {
+        panic!("Tensor {} has leg {} with forbidden dimension {}.",t.name,l,d);
       }
       if t.legs.iter().filter(|&&l2| l2 == l).count() > 1 {
         panic!("Tensor {} has twice the same leg. Trace is not allowed.", t.name);
       }
       match legs_map.entry(l) {
-        Entry::Vacant(entry) => { entry.insert((true,t.shape[i])); }
+        Entry::Vacant(entry) => { entry.insert((true,d)); }
         Entry::Occupied(mut entry) => {
           let (ref mut once, ref dim) = entry.get_mut();
           if !*once { panic!("Leg {} appears more than twice",l); }
-          if *dim != t.shape[i] { panic!("Leg {} has two diffent dimensions",l); }
+          if *dim != d { panic!("Leg {} has two diffent dimensions",l); }
           *once = false;
         }
       }
