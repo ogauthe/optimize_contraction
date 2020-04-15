@@ -13,14 +13,15 @@ class AbstractTensor(object):
   variables), a name used to print it and a list of legs that can match other
   tensors. Two tensors can be contracted along a common leg.
   """
-  regex = re.compile('[^a-zA-Z0-9]')
+  regex = re.compile('[^a-zA-Z0-9_]')
 
-  def __init__(self,name,legs,shape):
+  def __init__(self,name,legs,shape,todel=True):
     if len(shape) != len(legs):
       raise ValueError('shape and legs must have same length')
     self._name = name
     self._legs = list(legs)
     self._shape = list(shape)
+    self._todel = todel    # del tensor unless starting one
     self._ndim = len(legs)
     self._size = np.prod(shape)
 
@@ -28,13 +29,25 @@ class AbstractTensor(object):
   def name(self):
     return self._name
 
+  @name.setter
+  def name(self,name):
+    self._name = name
+
+  @property
+  def legs(self):
+    return self._legs
+
   @property
   def shape(self):
     return self._shape
 
   @property
-  def legs(self):
-    return self._legs
+  def todel(self):
+    return self._todel
+
+  @todel.setter
+  def todel(self,todel):
+    self._todel = todel
 
   @property
   def ndim(self):
@@ -160,10 +173,11 @@ class TensorNetwork(object):
     mem = mem0 + A.size + B.size + AB.size
 
     # 4. generate code
-    print(transpose_reshape(A,axA,legsA), end='')
-    print(transpose_reshape(B,legsB,axB), end='')
-    print(f'{AB.raw_name()} = np.dot({A.raw_name()},{B.raw_name()})'+ (AB.ndim > 1)*f'.reshape{tuple(ABshape)}')
-    print(f'del {A.raw_name()}, {B.raw_name()}')
+    Aupdate = transpose_reshape(A,axA,legsA)
+    Bupdate = transpose_reshape(B,legsB,axB)
+    print(f'{AB.raw_name()} = np.dot({Aupdate},{Bupdate})'+ (AB.ndim > 1)*f'.reshape{tuple(ABshape)}')
+    if A.todel or B.todel:
+      print('del ' + A.todel*(A.raw_name()+B.todel*", ") + B.todel*B.raw_name())
     #print(f'{contracted.raw_name()} = {contracted.raw_name()}.reshape({tofill})')
     self._tensors.append(AB)
     self._cpu += cpu
@@ -177,11 +191,17 @@ def transpose_reshape(A,axA,legsA):
   sh = np.prod([A.shape[k] for k in axA]), np.prod([A.shape[k] for k in legsA])
   if orderA == tuple(range(len(orderA))):  # no transpose
     if A.ndim > 2:
-      return f'{name} = {name}.reshape{sh}\n'
-    return ''   # (0,) or (0,1): nothing
+      return f'{name}.reshape{sh}'
+    return name   # (0,) or (0,1): nothing
   if A.ndim == 2:
-    return f'{name} = {name}.T\n'
-  return f'{name} = {name}.tranpose{orderA}.reshape{sh}\n'
+    return f'{name}.T'
+  if A.todel:
+    updated_name = name
+  else:
+    A.name = A.name + '_'
+    A.todel = True
+  print(f'{A.raw_name()} = {name}.tranpose{orderA}.reshape{sh}')
+  return A.raw_name()
 
 if len(argv) < 2:
   input_file = 'input_sample_py.json'
@@ -195,7 +215,7 @@ else:
 with open(input_file) as f:
     d = json.load(f)
     sequence = d['sequence']
-    tensL = [AbstractTensor(t['name'],t['legs'],sp.sympify(t['shape'])) for t in d['tensors']]
+    tensL = [AbstractTensor(t['name'],t['legs'],sp.sympify(t['shape']),False) for t in d['tensors']]
 
 print("Tensors:")
 for t in tensL:
@@ -214,4 +234,4 @@ order = tuple(np.argsort(np.abs(final.legs)))
 if order != tuple(range(final.ndim)):
   print(f'# reorder with: {final.raw_name()} = {final.raw_name()}.tranpose{order}.copy()')
 
-print(f'\nresult: {tn}', f'total cpu: {tn.cpu}', f'mem by step: {tn.mem}', sep='\n')
+print(f'\nresult: {tn}', f'total cpu: {sp.factor(tn.cpu)}', f'mem by step: {sp.factor(tn.mem)}', sep='\n')
