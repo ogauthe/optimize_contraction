@@ -2,9 +2,10 @@
 import numpy as np
 import sympy as sp
 import re
+import json
+from sys import argv
 
-tofill = '...'
-regex = re.compile('[^a-zA-Z0-9]')
+
 
 class AbstractTensor(object):
   """
@@ -12,14 +13,15 @@ class AbstractTensor(object):
   variables), a name used to print it and a list of legs that can match other
   tensors. Two tensors can be contracted along a common leg.
   """
+  regex = re.compile('[^a-zA-Z0-9]')
 
-  def __init__(self,name,shape,legs):
+  def __init__(self,name,legs,shape):
     if len(shape) != len(legs):
       raise ValueError('shape and legs must have same length')
     self._name = name
-    self._ndim = len(legs)
-    self._shape = list(shape)
     self._legs = list(legs)
+    self._shape = list(shape)
+    self._ndim = len(legs)
     self._size = np.prod(shape)
 
   @property
@@ -46,7 +48,7 @@ class AbstractTensor(object):
     return self._name
 
   def raw_name(self):
-    return regex.sub('',self._name)
+    return self.regex.sub('',self._name)
 
 def find_common_legs(A,B):
   return tuple(set(A.legs).intersection(B.legs))
@@ -66,12 +68,12 @@ def abstract_contraction(A,B,legs=None):
   name = "[" + A.name + '-' + B.name + ']'
   shape = [A.shape[i] for i in axA] + [B.shape[i] for i in axB]
   legs = [A.legs[i] for i in axA] + [B.legs[i] for i in axB]
-  res = AbstractTensor(name,shape,legs)
+  res = AbstractTensor(name,legs,shape)
   cpu = res.size
   for i in legsA:   # cpu cost = loop on returned shape
     cpu *= A.shape[i]  # + loop on every contracted leg
-  mem = max(A.size,B.size,res.size)
-  return AbstractTensor(name,shape,legs), (cpu,mem)
+  mem = A.size + B.size + res.size  #unreachable upper bound, cannot get max
+  return res, (cpu,mem)
 
 
 class TensorNetwork(object):
@@ -84,7 +86,7 @@ class TensorNetwork(object):
   def __init__(self, *tensors):
     self._tensors = list(tensors)
     self._cpu = 0
-    self._mem = sum(T.size for T in tensors)
+    self._mem = [sum(T.size for T in tensors)]
     self._contracted = []
     self._ntens = len(tensors)
 
@@ -109,7 +111,7 @@ class TensorNetwork(object):
     return self._contracted
 
   def copy(self):
-    return TensorNetwork(*self._tensors, cpu=self._cpu, mem=self._mem,
+    return TensorNetwork(*self._tensors, cpu=self._cpu, mem=self._mem.copy(),
                           contracted=self._contracted)
 
   def __repr__(self):
@@ -126,9 +128,8 @@ class TensorNetwork(object):
       i -= 1
     contracted, (cpu,mem) = abstract_contraction(tens[0],tens[1],legs=legs)
     self._tensors.append(contracted)
-    mem += mem0
     self._cpu += cpu
-    self._mem = max(self._mem,mem)
+    self._mem.append(mem+mem0)
     self._ntens -= 1
 
   def contract_and_generate_code(self,legs):
@@ -152,11 +153,11 @@ class TensorNetwork(object):
     ABname = "[" + A.name + '-' + B.name + ']'
     ABshape = [A.shape[i] for i in axA] + [B.shape[i] for i in axB]
     ABlegs = [A.legs[i] for i in axA] + [B.legs[i] for i in axB]
-    AB = AbstractTensor(ABname,ABshape,ABlegs)
+    AB = AbstractTensor(ABname,ABlegs,ABshape)
     cpu = AB.size
     for i in legsA:   # cpu cost = loop on returned shape
       cpu *= A.shape[i]  # + loop on every contracted leg
-    mem = max(A.size,B.size,AB.size)
+    mem = mem0 + A.size + B.size + AB.size
 
     # 4. generate code
     print(transpose_reshape(A,axA,legsA), end='')
@@ -165,9 +166,8 @@ class TensorNetwork(object):
     print(f'del {A.raw_name()}, {B.raw_name()}')
     #print(f'{contracted.raw_name()} = {contracted.raw_name()}.reshape({tofill})')
     self._tensors.append(AB)
-    mem += mem0
     self._cpu += cpu
-    self._mem = max(self._mem,mem)
+    self._mem.append(mem)
     self._ntens -= 1
 
 
@@ -183,37 +183,26 @@ def transpose_reshape(A,axA,legsA):
     return f'{name} = {name}.T\n'
   return f'{name} = {name}.tranpose{orderA}.reshape{sh}\n'
 
+if len(argv) < 2:
+  input_file = 'input_sample_py.json'
+  print("\nNo input file given, use", input_file)
+else:
+  input_file = argv[1]
+  print('\nTake input parameters from file', input_file)
 
-chif = sp.symbols('chi')
-big_subs = 10000000000000000000000000
-def formal_max(a,b):
-  if isinstance(a, tuple(sp.core.all_classes)):
-    if isinstance(b, tuple(sp.core.all_classes)):
-      numeric = [a.subs(chif,big_subs), b.subs(chif,big_subs)]
-      return [a,b][numeric.index(max(numeric))]   # dirty but efficient
-    return a
-  if isinstance(b, tuple(sp.core.all_classes)):
-    return b
-  return max(a,b)
 
-chi = 20
-D = 3
-#   C-0-T- -1
-#   |   |
-#   1   2
-#   |   |
-#   T-3-E- -2
-#   |   |
-#  -3   -4
 
-C = AbstractTensor('C',(chi,chi),(0,1))
-T1 = AbstractTensor('T1',(chi,D**2,chi),(0,2,-1))
-T2 = AbstractTensor('T2',(chi,chi,D**2),(1,-3,3))
-E = AbstractTensor('E',(D**2,D**2,D**2,D**2),(2,3,-4,-2))
-sequence = [(0,),(1,),(2,3)]
-print(f'test: symmetric CTMRG contraction scheme, chi={chi}, D={D}')
+with open(input_file) as f:
+    d = json.load(f)
+    sequence = d['sequence']
+    tensL = [AbstractTensor(t['name'],t['legs'],sp.sympify(t['shape'])) for t in d['tensors']]
 
-tn = TensorNetwork(C,T1,T2,E)
+print("Tensors:")
+for t in tensL:
+  print(f'name: {t.name}, legs: {t.legs}, shape: {t.shape}')
+
+print()
+tn = TensorNetwork(*tensL)
 for legs in sequence:
   tn.contract_and_generate_code(legs)
 
@@ -225,7 +214,4 @@ order = tuple(np.argsort(np.abs(final.legs)))
 if order != tuple(range(final.ndim)):
   print(f'# reorder with: {final.raw_name()} = {final.raw_name()}.tranpose{order}.copy()')
 
-print(f'\n{tn}', ': cpu = ', tn.cpu, ', mem = ', tn.mem, sep='')
-
-
-
+print(f'\nresult: {tn}', f'total cpu: {tn.cpu}', f'mem by step: {tn.mem}', sep='\n')

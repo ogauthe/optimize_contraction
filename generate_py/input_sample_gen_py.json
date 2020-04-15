@@ -1,0 +1,12 @@
+{
+  "sequence": [[12], [5, 8], [10], [6, 7, 9, 11], [1, 2, 3, 4]],
+  "tensors":
+  [
+    { "name": "A", "legs": [-1,1,2,3,4], "shape": ["d","D","D","D","D"] },
+    { "name": "Aconj", "legs": [-2,5,6,7,8], "shape": ["d","D","D","D","D"] },
+    { "name": "CT1", "legs": [9,1,5,12], "shape": ["chi","D","D","chi"] },
+    { "name": "CT2", "legs": [9,2,6,10], "shape": ["chi","D","D","chi"] },
+    { "name": "CT3", "legs": [10,3,7,11], "shape": ["chi","D","D","chi"] },
+    { "name": "CT4", "legs": [11,8,4,12], "shape": ["chi","D","D","chi"] }
+  ]
+}
