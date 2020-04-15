@@ -8,8 +8,8 @@ type BinaryTensor = u64;
 #[derive(Debug, Clone, serde::Deserialize)]
 struct AbstractTensor { // convenient struct to read json input file
   name: String,            // not currently used
-  shape: Vec<Dimension>,
   legs: Vec<i8>,
+  shape: Vec<Dimension>,
 }
 
 // Define binary representation for tensors: bit i=1 => tensor has open leg i.
