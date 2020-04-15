@@ -204,7 +204,7 @@ def transpose_reshape(A,axA,legsA):
   return A.raw_name()
 
 if len(argv) < 2:
-  input_file = 'input_sample_py.json'
+  input_file = 'input_sample_gen_py.json'
   print("\nNo input file given, use", input_file)
 else:
   input_file = argv[1]
@@ -216,6 +216,20 @@ with open(input_file) as f:
     d = json.load(f)
     sequence = d['sequence']
     tensL = [AbstractTensor(t['name'],t['legs'],sp.sympify(t['shape']),False) for t in d['tensors']]
+
+legs_map = {}
+for t in tensL:
+  for l,d in zip(t.legs,t.shape):
+    if t.legs.count(l) > 1:
+      raise ValueError(f'Tensor {t.name} has twice the same leg. Trace is not allowed.')
+    if l in legs_map.keys():
+      if not legs_map[l][0]:
+       raise ValueError(f"Leg {l} appears more than twice")
+      if legs_map[l][1] != d:
+       raise ValueError(f"Leg {l} has two diffent dimensions")
+      legs_map[l] = (False,d)  # once, dim
+    else:
+      legs_map[l] = (True,d)   # once, dim
 
 print("Tensors:")
 for t in tensL:
