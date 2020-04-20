@@ -234,6 +234,7 @@ for t in tensL:
 print("Tensors:")
 for t in tensL:
   print(f'name: {t.name}, legs: {t.legs}, shape: {t.shape}')
+print("sequence:", sequence)
 
 print()
 tn = TensorNetwork(*tensL)
