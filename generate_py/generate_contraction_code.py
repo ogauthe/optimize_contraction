@@ -218,8 +218,9 @@ with open(input_file) as f:
     tensL = [AbstractTensor(t['name'],t['legs'],sp.sympify(t['shape']),False) for t in d['tensors']]
 
 legs_map = {}
+var = {}
 for t in tensL:
-  for l,d in zip(t.legs,t.shape):
+  for i,(l,d) in enumerate(zip(t.legs,t.shape)):
     if t.legs.count(l) > 1:
       raise ValueError(f'Tensor {t.name} has twice the same leg. Trace is not allowed.')
     if l in legs_map.keys():
@@ -230,6 +231,7 @@ for t in tensL:
       legs_map[l] = (False,d)  # once, dim
     else:
       legs_map[l] = (True,d)   # once, dim
+      var[d] = (t,i)
 
 print("Tensors:")
 for t in tensL:
@@ -237,6 +239,9 @@ for t in tensL:
 print("sequence:", sequence)
 
 print()
+for (d,(t,i)) in var.items():
+  print(f'{d} = {t}.shape[{i}]')
+
 tn = TensorNetwork(*tensL)
 for legs in sequence:
   tn.contract_and_generate_code(legs)
