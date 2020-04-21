@@ -62,10 +62,8 @@ impl<'a> TensorNetwork<'a> {
     for &d in self.legs_dim {
       if t%2 != 0 {
         s *= d;
-      } else {
-        if t == 0 {
+      } else if t == 0 {
           return s;
-        }
       }
       t >>= 1;
     }
@@ -78,10 +76,8 @@ impl<'a> TensorNetwork<'a> {
     for &d in self.legs_dim {
       if t%2 != 0 {
         s = s.checked_mul(d)?;
-      } else {
-        if t == 0 {
+      } else if t == 0 {
           return Some(s);
-        }
       }
       t >>= 1;
     }
