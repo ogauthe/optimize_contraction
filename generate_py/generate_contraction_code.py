@@ -215,7 +215,17 @@ else:
 with open(input_file) as f:
     d = json.load(f)
     sequence = d['sequence']
-    tensL = [AbstractTensor(t['name'],t['legs'],sp.sympify(t['shape']),False) for t in d['tensors']]
+    tensL = []
+    for t in d['tensors']:
+      sh0 = sp.sympify(t['shape'])
+      sh = []
+      for d in sh0:
+        try:
+          d = int(d)
+        except TypeError:
+          pass
+        sh.append(d)
+      tensL.append(AbstractTensor(t['name'],t['legs'],sh,False))
 
 legs_map = {}
 var = {}
@@ -231,7 +241,9 @@ for t in tensL:
       legs_map[l] = (False,d)  # once, dim
     else:
       legs_map[l] = (True,d)   # once, dim
-      var[d] = (t,i)
+      if (isinstance(d, sp.Basic)):
+        var[d] = (t,i)
+
 
 print("Tensors:")
 for t in tensL:
