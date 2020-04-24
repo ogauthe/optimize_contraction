@@ -200,7 +200,7 @@ def transpose_reshape(A,axA,legsA):
   else:
     A.name = A.name + '_'
     A.todel = True
-  print(f'{A.raw_name()} = {name}.tranpose{orderA}.reshape{sh}')
+  print(f'{A.raw_name()} = {name}.transpose{orderA}.reshape{sh}')
   return A.raw_name()
 
 if len(argv) < 2:
@@ -252,6 +252,6 @@ final = tn.tensors[0]
 print(f'# exit tensor: {final} with name {final.raw_name()} and legs {final.legs}')
 order = tuple(np.argsort(np.abs(final.legs)))
 if order != tuple(range(final.ndim)):
-  print(f'# reorder with: {final.raw_name()} = {final.raw_name()}.tranpose{order}.copy()')
+  print(f'# reorder with: {final.raw_name()} = {final.raw_name()}.transpose{order}.copy()')
 
 print(f'\nresult: {tn}', f'total cpu: {sp.factor(tn.cpu)}', f'mem by step: {sp.factor(tn.mem)}', sep='\n')
