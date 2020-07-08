@@ -157,8 +157,8 @@ class TensorNetwork(object):
 
     # 2. find legs indices in A and B
     A,B = tens
-    legsA = [A.legs.index(l) for l in legs]  # indices of legs to contract in A
-    legsB = [B.legs.index(l) for l in legs]  # indices of legs to contract in B
+    legsA = tuple(A.legs.index(l) for l in legs)  # indices of legs to contract in A
+    legsB = tuple(B.legs.index(l) for l in legs)  # indices of legs to contract in B
     axA = [k for k in range(A.ndim) if k not in legsA]    # indices of A other legs
     axB = [k for k in range(B.ndim) if k not in legsB]    # indices of B other legs
 
@@ -173,9 +173,7 @@ class TensorNetwork(object):
     mem = mem0 + A.size + B.size + AB.size
 
     # 4. generate code
-    Aupdate = transpose_reshape(A,axA,legsA)
-    Bupdate = transpose_reshape(B,legsB,axB)
-    print(f'{AB.raw_name()} = np.dot({Aupdate},{Bupdate})'+ (AB.ndim > 1)*f'.reshape{tuple(ABshape)}')
+    print(f'{AB.raw_name()} = np.tensordot({A.raw_name()}, {B.raw_name()}, ({legsA},{legsB}))')
     if A.todel or B.todel:
       print('del ' + A.todel*(A.raw_name()+B.todel*", ") + B.todel*B.raw_name())
     #print(f'{contracted.raw_name()} = {contracted.raw_name()}.reshape({tofill})')
@@ -184,24 +182,6 @@ class TensorNetwork(object):
     self._mem.append(mem)
     self._ntens -= 1
 
-
-def transpose_reshape(A,axA,legsA):
-  orderA = tuple(axA + legsA)
-  name = A.raw_name()
-  sh = np.prod([A.shape[k] for k in axA]), np.prod([A.shape[k] for k in legsA])
-  if orderA == tuple(range(len(orderA))):  # no transpose
-    if A.ndim > 2:
-      return f'{name}.reshape{sh}'
-    return name   # (0,) or (0,1): nothing
-  if A.ndim == 2:
-    return f'{name}.T'
-  if A.todel:
-    updated_name = name
-  else:
-    A.name = A.name + '_'
-    A.todel = True
-  print(f'{A.raw_name()} = {name}.transpose{orderA}.reshape{sh}')
-  return A.raw_name()
 
 if len(argv) < 2:
   input_file = 'input_sample_gen_py.json'
@@ -251,9 +231,6 @@ for t in tensL:
 print("sequence:", sequence)
 
 print()
-for (d,(t,i)) in var.items():
-  print(f'{d} = {t}.shape[{i}]')
-
 tn = TensorNetwork(*tensL)
 for legs in sequence:
   tn.contract_and_generate_code(legs)
