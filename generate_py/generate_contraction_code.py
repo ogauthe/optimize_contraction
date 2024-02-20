@@ -6,7 +6,7 @@ import json
 from sys import argv
 
 
-class AbstractTensor(object):
+class AbstractTensor:
     """
     Class for abstract tensor. Each tensor has a shape (that can include formal
     variables), a name used to print it and a list of legs that can match other
@@ -15,12 +15,13 @@ class AbstractTensor(object):
 
     regex = re.compile("[^a-zA-Z0-9_]")
 
-    def __init__(self, name, legs, shape, todel=True):
+    def __init__(self, name, legs, shape, n_row_leg, todel=False):
         if len(shape) != len(legs):
             raise ValueError("shape and legs must have same length")
         self._name = name
         self._legs = list(legs)
         self._shape = list(shape)
+        self._n_row_leg = int(n_row_leg)
         self._todel = todel  # del tensor unless starting one
         self._ndim = len(legs)
         self._size = np.prod(shape)
@@ -54,6 +55,10 @@ class AbstractTensor(object):
         return self._ndim
 
     @property
+    def n_row_leg(self):
+        return self._n_row_leg
+
+    @property
     def size(self):
         return self._size
 
@@ -84,7 +89,7 @@ def abstract_contraction(A, B, legs=None):
     name = "[" + A.name + "-" + B.name + "]"
     shape = [A.shape[i] for i in axA] + [B.shape[i] for i in axB]
     legs = [A.legs[i] for i in axA] + [B.legs[i] for i in axB]
-    res = AbstractTensor(name, legs, shape)
+    res = AbstractTensor(name, legs, shape, A.n_row_leg)
     cpu = res.size
     for i in legsA:  # cpu cost = loop on returned shape
         cpu *= A.shape[i]  # + loop on every contracted leg
@@ -92,14 +97,14 @@ def abstract_contraction(A, B, legs=None):
     return res, (cpu, mem)
 
 
-class TensorNetwork(object):
+class TensorNetwork:
     """
     A class for abstract tensor network. Consists in a list of tensors that can
     be contracted and a list of previously contracted legs. Store the cpu cost of
     each contraction and the memory cost of each past state.
     """
 
-    def __init__(self, *tensors):
+    def __init__(self, tensors):
         self._tensors = list(tensors)
         self._cpu = 0
         self._mem = [sum(T.size for T in tensors)]
@@ -128,7 +133,7 @@ class TensorNetwork(object):
 
     def copy(self):
         return TensorNetwork(
-            *self._tensors,
+            self._tensors,
             cpu=self._cpu,
             mem=self._mem.copy(),
             contracted=self._contracted,
@@ -165,31 +170,36 @@ class TensorNetwork(object):
         A, B = tens
         legsA = tuple(A.legs.index(leg) for leg in legs)  # indices of legs to contract
         legsB = tuple(B.legs.index(leg) for leg in legs)  # indices of legs to contract
-        axA = [k for k in range(A.ndim) if k not in legsA]  # indices of A other legs
-        axB = [k for k in range(B.ndim) if k not in legsB]  # indices of B other legs
+        axA = tuple(
+            k for k in range(A.ndim) if k not in legsA
+        )  # indices of A other legs
+        axB = tuple(
+            k for k in range(B.ndim) if k not in legsB
+        )  # indices of B other legs
+        permA = (axA, legsA)
+        permB = (axB, legsB)
 
         # 3. find contracted tensor features
         ABname = "[" + A.name + "-" + B.name + "]"
         ABshape = [A.shape[i] for i in axA] + [B.shape[i] for i in axB]
         ABlegs = [A.legs[i] for i in axA] + [B.legs[i] for i in axB]
-        AB = AbstractTensor(ABname, ABlegs, ABshape)
+        AB = AbstractTensor(ABname, ABlegs, ABshape, A.n_row_leg)
         cpu = AB.size
         for i in legsA:  # cpu cost = loop on returned shape
             cpu *= A.shape[i]  # + loop on every contracted leg
         mem = mem0 + A.size + B.size + AB.size
 
         # 4. generate code
-        print(
-            f"{AB.raw_name()} = np.tensordot({A.raw_name()}",
-            f"{B.raw_name()}, ({legsA},{legsB}))",
-        )
-        if A.todel or B.todel:
-            print(
-                "del "
-                + A.todel * (A.raw_name() + B.todel * ", ")
-                + B.todel * B.raw_name()
-            )
-        # print(f'{contracted.raw_name()} = {contracted.raw_name()}.reshape({tofill})')
+        print(f"{A.raw_name()} = {A.raw_name()}.permute{permA}")
+        print(f"{B.raw_name()} = {B.raw_name()}.permute{permB}")
+        print(f"{AB.raw_name()} = {A.raw_name()} @ {B.raw_name()}")
+        if A.todel:
+            if B.todel:
+                print(f"del {A.raw_name()}, {B.raw_name()}")
+            else:
+                print(f"del {A.raw_name()}")
+        elif B.todel:
+            print(f"del {B.raw_name()}")
         self._tensors.append(AB)
         self._cpu += cpu
         self._mem.append(mem)
@@ -204,48 +214,50 @@ else:
     print("\nTake input parameters from file", input_file)
 
 
-with open(input_file) as f:
-    d = json.load(f)
-    sequence = d["sequence"]
-    tensL = []
-    for t in d["tensors"]:
-        sh0 = sp.sympify(t["shape"])
-        sh = []
-        for d in sh0:
-            try:
-                d = int(d)
-            except TypeError:
-                pass
-            sh.append(d)
-        tensL.append(AbstractTensor(t["name"], t["legs"], sh, False))
+with open(input_file) as fin:
+    input_data = json.load(fin)
+
+sequence = input_data["sequence"]
+input_tensors = []
+for t0 in input_data["tensors"]:
+    sh0 = sp.sympify(t0["shape"])
+    sh = []
+    for d in sh0:
+        try:
+            d = int(d)
+        except TypeError:
+            pass
+        sh.append(d)
+    t = AbstractTensor(t0["name"], t0["legs"], sh, t0["n_row_leg"], todel=False)
+    input_tensors.append(t)
 
 legs_map = {}
 var = {}
-for t in tensL:
-    for i, (l, d) in enumerate(zip(t.legs, t.shape)):
-        if t.legs.count(l) > 1:
+for t in input_tensors:
+    for i, (leg, d) in enumerate(zip(t.legs, t.shape)):
+        if t.legs.count(leg) > 1:
             raise ValueError(
                 f"Tensor {t.name} has twice the same leg. Trace is not allowed."
             )
-        if l in legs_map.keys():
-            if not legs_map[l][0]:
-                raise ValueError(f"Leg {l} appears more than twice")
-            if legs_map[l][1] != d:
-                raise ValueError(f"Leg {l} has two diffent dimensions")
-            legs_map[l] = (False, d)  # once, dim
+        if leg in legs_map.keys():
+            if not legs_map[leg][0]:
+                raise ValueError(f"Leg {leg} appears more than twice")
+            if legs_map[leg][1] != d:
+                raise ValueError(f"Leg {leg} has two diffent dimensions")
+            legs_map[leg] = (False, d)  # once, dim
         else:
-            legs_map[l] = (True, d)  # once, dim
+            legs_map[leg] = (True, d)  # once, dim
             if isinstance(d, sp.Basic):
                 var[d] = (t, i)
 
 
-print("Tensors:")
-for t in tensL:
+print("Input tensors:")
+for t in input_tensors:
     print(f"name: {t.name}, legs: {t.legs}, shape: {t.shape}")
-print("sequence:", sequence)
+print("Contraction sequence:", sequence)
 
 print()
-tn = TensorNetwork(*tensL)
+tn = TensorNetwork(input_tensors)
 for legs in sequence:
     tn.contract_and_generate_code(legs)
 
@@ -255,7 +267,7 @@ final = tn.tensors[0]
 print(f"# exit tensor: {final} with name {final.raw_name()} and legs {final.legs}")
 order = tuple(np.argsort(np.abs(final.legs)))
 if order != tuple(range(final.ndim)):
-    print(f"# reorder with: {final.raw_name()} = {final.raw_name()}.transpose{order}")
+    print(f"# reorder with: {final.raw_name()} = {final.raw_name()}.permute{order}")
 
 print(
     f"\nresult: {tn}",
