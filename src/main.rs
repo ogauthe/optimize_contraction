@@ -284,7 +284,7 @@ fn represent_binary(tensors: &Vec<AbstractTensor>) -> (Vec<i8>, Vec<Dimension>, 
             );
         }
         for (&l, &d) in t.legs.iter().zip(t.shape.iter()) {
-            if d < 2 {
+            if d < 1 {
                 panic!(
                     "Tensor {} has leg {} with forbidden dimension {}.",
                     t.name, l, d
