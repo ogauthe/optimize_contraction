@@ -16,7 +16,7 @@ repos:
     hooks:
       - id: flake8
   - repo: 'https://github.com/FeryET/pre-commit-rust'
-    rev: v1.0.2   # cannot make 1.0.3 work
+    rev: v1.1.0
     hooks:
       - id: fmt
         args: ["--verbose", "--"]
