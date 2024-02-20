@@ -15,14 +15,14 @@ class AbstractTensor:
 
     regex = re.compile("[^a-zA-Z0-9_]")
 
-    def __init__(self, name, legs, shape, n_row_leg, todel=False):
+    def __init__(self, name, legs, shape, n_row_leg, initial=False):
         if len(shape) != len(legs):
             raise ValueError("shape and legs must have same length")
         self._name = name
         self._legs = list(legs)
         self._shape = list(shape)
         self._n_row_leg = int(n_row_leg)
-        self._todel = todel  # del tensor unless starting one
+        self._initial = bool(initial)
         self._ndim = len(legs)
         self._size = np.prod(shape)
 
@@ -43,12 +43,8 @@ class AbstractTensor:
         return self._shape
 
     @property
-    def todel(self):
-        return self._todel
-
-    @todel.setter
-    def todel(self, todel):
-        self._todel = todel
+    def initial(self):
+        return self._initial
 
     @property
     def ndim(self):
@@ -109,15 +105,15 @@ class TensorNetwork:
         self._cpu = 0
         self._mem = [sum(T.size for T in tensors)]
         self._contracted = []
-        self._ntens = len(tensors)
+        self._n_tensors = len(tensors)
 
     @property
     def tensors(self):
         return self._tensors
 
     @property
-    def ntens(self):
-        return self._ntens
+    def n_tensors(self):
+        return self._n_tensors
 
     @property
     def cpu(self):
@@ -144,7 +140,7 @@ class TensorNetwork:
 
     def contract_legs(self, legs):
         tens = []
-        i = self._ntens - 1
+        i = self._n_tensors - 1
         mem0 = sum(T.size for T in self._tensors)
         while len(tens) != 2:
             if legs[0] in self._tensors[i].legs:
@@ -154,12 +150,12 @@ class TensorNetwork:
         self._tensors.append(contracted)
         self._cpu += cpu
         self._mem.append(mem + mem0)
-        self._ntens -= 1
+        self._n_tensors -= 1
 
     def contract_and_generate_code(self, legs):
         # 1. find tensors A and B that have legs to contract
         tens = []
-        i = self._ntens - 1
+        i = self._n_tensors - 1
         mem0 = sum(T.size for T in self._tensors)
         while len(tens) != 2:
             if legs[0] in self._tensors[i].legs:
@@ -177,33 +173,39 @@ class TensorNetwork:
             k for k in range(B.ndim) if k not in legsB
         )  # indices of B other legs
         permA = (axA, legsA)
-        permB = (axB, legsB)
+        permB = (legsB, axB)
 
         # 3. find contracted tensor features
-        ABname = "[" + A.name + "-" + B.name + "]"
+        if self._n_tensors == 2:
+            ABname = "out"
+        else:
+            ABname = "[" + A.name + "-" + B.name + "]"
         ABshape = [A.shape[i] for i in axA] + [B.shape[i] for i in axB]
         ABlegs = [A.legs[i] for i in axA] + [B.legs[i] for i in axB]
-        AB = AbstractTensor(ABname, ABlegs, ABshape, A.n_row_leg)
+        AB = AbstractTensor(ABname, ABlegs, ABshape, len(axA))
         cpu = AB.size
         for i in legsA:  # cpu cost = loop on returned shape
             cpu *= A.shape[i]  # + loop on every contracted leg
         mem = mem0 + A.size + B.size + AB.size
 
         # 4. generate code
-        print(f"{A.raw_name()} = {A.raw_name()}.permute{permA}")
-        print(f"{B.raw_name()} = {B.raw_name()}.permute{permB}")
-        print(f"{AB.raw_name()} = {A.raw_name()} @ {B.raw_name()}")
-        if A.todel:
-            if B.todel:
-                print(f"del {A.raw_name()}, {B.raw_name()}")
+        trivial = (tuple(range(A.n_row_leg)), tuple(range(A.n_row_leg, A.ndim)))
+        if permA != trivial:
+            if permA == trivial[::-1]:  # matrix transpose
+                print(f"{A.raw_name()} = {A.raw_name()}.transpose()")
             else:
-                print(f"del {A.raw_name()}")
-        elif B.todel:
-            print(f"del {B.raw_name()}")
+                print(f"{A.raw_name()} = {A.raw_name()}.permute{permA}")
+        trivial = (tuple(range(B.n_row_leg)), tuple(range(B.n_row_leg, B.ndim)))
+        if permB != trivial:
+            if permB == trivial[::-1]:  # matrix transpose
+                print(f"{B.raw_name()} = {B.raw_name()}.transpose()")
+            else:
+                print(f"{B.raw_name()} = {B.raw_name()}.permute{permB}")
+        print(f"{AB.raw_name()} = {A.raw_name()} @ {B.raw_name()}")
         self._tensors.append(AB)
         self._cpu += cpu
         self._mem.append(mem)
-        self._ntens -= 1
+        self._n_tensors -= 1
 
 
 if len(argv) < 2:
@@ -228,7 +230,7 @@ for t0 in input_data["tensors"]:
         except TypeError:
             pass
         sh.append(d)
-    t = AbstractTensor(t0["name"], t0["legs"], sh, t0["n_row_leg"], todel=False)
+    t = AbstractTensor(t0["name"], t0["legs"], sh, t0["n_row_leg"], initial=True)
     input_tensors.append(t)
 
 legs_map = {}
@@ -261,7 +263,7 @@ tn = TensorNetwork(input_tensors)
 for legs in sequence:
     tn.contract_and_generate_code(legs)
 
-if tn.ntens != 1:
+if tn.n_tensors != 1:
     raise ValueError("Final number of tensors is not 1")
 final = tn.tensors[0]
 print(f"# exit tensor: {final} with name {final.raw_name()} and legs {final.legs}")
