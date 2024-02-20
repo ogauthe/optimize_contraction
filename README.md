@@ -29,5 +29,5 @@ The program prints the best contraction sequence as well as its CPU cost and an 
 The program `generate_py/generate_contraction_code.py` can then be used to generate a memory-optimized python code and can be used to estimate contraction cost with formal variables as dimensions. Unfortunately the output is not very readable and I advise to review it before inserting it inside real code.
 
 # References
-Pfeiffer et al., Phys. Rev. E 90, 033315, https://journals.aps.org/pre/abstract/10.1103/PhysRevE.90.033315  
+Pfeiffer et al., Phys. Rev. E 90, 033315, https://journals.aps.org/pre/abstract/10.1103/PhysRevE.90.033315
 see also https://github.com/frankschindler/OptimizedTensorContraction/
