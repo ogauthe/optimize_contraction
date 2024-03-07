@@ -178,8 +178,13 @@ class TensorNetwork:
         # 3. find contracted tensor features
         if self._n_tensors == 2:
             ABname = "out"
+        elif A.initial:
+            if B.initial:
+                ABname = f"_tmp{i}"
+            else:
+                ABname = B.raw_name()
         else:
-            ABname = "[" + A.name + "-" + B.name + "]"
+            ABname = A.raw_name()
         ABshape = [A.shape[i] for i in axA] + [B.shape[i] for i in axB]
         ABlegs = [A.legs[i] for i in axA] + [B.legs[i] for i in axB]
         AB = AbstractTensor(ABname, ABlegs, ABshape, len(axA))
@@ -190,18 +195,30 @@ class TensorNetwork:
 
         # 4. generate code
         trivial = (tuple(range(A.n_row_leg)), tuple(range(A.n_row_leg, A.ndim)))
-        if permA != trivial:
+        if permA == trivial:
+            newA = A.raw_name()
+        else:
+            if A.initial:
+                newA = A.raw_name() + "p"
+            else:
+                newA = A.raw_name()
             if permA == trivial[::-1]:  # matrix transpose
-                print(f"{A.raw_name()} = {A.raw_name()}.transpose()")
+                print(f"{newA} = {A.raw_name()}.transpose()")
             else:
-                print(f"{A.raw_name()} = {A.raw_name()}.permute{permA}")
+                print(f"{newA} = {A.raw_name()}.permute{permA}")
         trivial = (tuple(range(B.n_row_leg)), tuple(range(B.n_row_leg, B.ndim)))
-        if permB != trivial:
-            if permB == trivial[::-1]:  # matrix transpose
-                print(f"{B.raw_name()} = {B.raw_name()}.transpose()")
+        if permB == trivial:
+            newB = B.raw_name()
+        else:
+            if B.initial:
+                newB = B.raw_name() + "p"
             else:
-                print(f"{B.raw_name()} = {B.raw_name()}.permute{permB}")
-        print(f"{AB.raw_name()} = {A.raw_name()} @ {B.raw_name()}")
+                newB = B.raw_name()
+            if permB == trivial[::-1]:  # matrix transpose
+                print(f"{newB} = {B.raw_name()}.transpose()")
+            else:
+                print(f"{newB} = {B.raw_name()}.permute{permB}")
+        print(f"{AB.raw_name()} = {newA} @ {newB}")
         self._tensors.append(AB)
         self._cpu += cpu
         self._mem.append(mem)
